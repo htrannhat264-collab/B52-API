@@ -1,18 +1,11 @@
 {
-  "name": "hoc-cau-tu-dau",
+  "name": "sieu-thuat-toan-vip",
   "version": "5.0.0",
   "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
+  "scripts": { "start": "node index.js" },
   "dependencies": {
     "express": "4.18.2",
     "axios": "1.6.2",
-    "cors": "2.8.5",
-    "compression": "1.7.4",
-    "helmet": "7.1.0"
-  },
-  "engines": {
-    "node": "18.x"
+    "cors": "2.8.5"
   }
 }
