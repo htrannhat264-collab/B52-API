@@ -1,6 +1,6 @@
 {
-  "name": "sieu-thuat-toan",
-  "version": "5.0.0",
+  "name": "sieu-thuat-toan-40",
+  "version": "6.0.0",
   "main": "index.js",
   "scripts": { "start": "node index.js" },
   "dependencies": {
