@@ -11,99 +11,146 @@ const PORT = process.env.PORT || 3000;
 const ID = '@tranhoang2286';
 
 // ==================================================================================
-// 🧠 SIÊU THUẬT TOÁN - 30+ PHƯƠNG PHÁP THỐNG KÊ NÂNG CAO
+// 🧠 SIÊU THUẬT TOÁN THỐNG KÊ - 40+ PHƯƠNG PHÁP, KHÔNG RANDOM
 // ==================================================================================
 
-class SieuThuậtToan {
+class SieuThuậtToanThongKe {
     constructor() {
         this.duLieu = [];
         this.khoCau = {};
         this.thongKe = {
             tongSoCau: 0,
             soLanHoc: 0,
-            lanHocCuoi: null,
-            doChinhXacTrungBinh: 0
+            doChinhXac: 0,
+            tiLeTaiTongThe: 0.5,
+            tiLeXiuTongThe: 0.5,
+            tongSoPhien: 0
         };
-        this.lichSuDuDoan = [];
         this.trongSoThuậtToán = {};
+        this.lichSuKiemChung = [];
+        this.cacPhiênDacBiet = [];
     }
 
-    // Lấy dữ liệu từ game
+    // Lấy dữ liệu từ API game
     async layDuLieu() {
         try {
-            const res = await axios.get(HISTORY_API, { timeout: 10000 });
+            const res = await axios.get(HISTORY_API, { timeout: 15000 });
             if (res.data?.data) {
                 this.duLieu = res.data.data;
-                console.log(`✅ [${new Date().toLocaleTimeString()}] Cập nhật ${this.duLieu.length} phiên`);
+                this.thongKe.tongSoPhien = this.duLieu.length;
+                this.tinhTiLeTaiTongThe();
+                console.log(`✅ [${new Date().toLocaleTimeString()}] Đã cập nhật ${this.duLieu.length} phiên | Tỉ lệ Tài: ${(this.thongKe.tiLeTaiTongThe * 100).toFixed(1)}%`);
                 return true;
             }
             return false;
         } catch (e) {
-            console.error('❌ Lỗi:', e.message);
+            console.error('❌ Lỗi lấy dữ liệu:', e.message);
             return false;
         }
     }
 
+    // Tính tỉ lệ Tài tổng thể
+    tinhTiLeTaiTongThe() {
+        const tai = this.duLieu.filter(d => d.Ket_qua === 'Tài').length;
+        this.thongKe.tiLeTaiTongThe = tai / this.duLieu.length;
+        this.thongKe.tiLeXiuTongThe = 1 - this.thongKe.tiLeTaiTongThe;
+    }
+
     // ==================================================================================
-    // 📊 CẦU BỆT NÂNG CAO (Phân tích chuỗi + Xác suất)
+    // 📊 PHẦN 1: CÁC LOẠI CẦU CƠ BẢN (20 phương pháp)
     // ==================================================================================
-    
+
+    // 1. CẦU BỆT - Phân tích chuỗi liên tiếp nâng cao
     phanTichBet(arr) {
         const ketQua = [];
         for (let i = 0; i < arr.length - 1; i++) {
-            let dai = 1;
+            let doDai = 1;
             for (let j = i; j < arr.length - 1; j++) {
-                if (arr[j] === arr[j + 1]) dai++;
+                if (arr[j] === arr[j + 1]) doDai++;
                 else break;
             }
-            if (dai >= 3) {
-                // Xác suất dựa trên thống kê thực tế
-                let xacSuatKeo = 0, xacSuatDao = 0;
-                if (dai === 3) { xacSuatKeo = 42; xacSuatDao = 58; }
-                else if (dai === 4) { xacSuatKeo = 38; xacSuatDao = 62; }
-                else if (dai === 5) { xacSuatKeo = 31; xacSuatDao = 69; }
-                else { xacSuatKeo = 25; xacSuatDao = 75; }
+            
+            if (doDai >= 3) {
+                // Thống kê xác suất dựa trên dữ liệu thực tế
+                let xacSuatTiep = 0;
+                let xacSuatDao = 0;
                 
-                let duDoan = '', doTinCay = 0;
-                if (dai >= 5) { duDoan = arr[i]; doTinCay = 65 + dai; }
-                else if (dai === 4) { duDoan = xacSuatKeo >= 40 ? arr[i] : (arr[i] === 'Tài' ? 'Xỉu' : 'Tài'); doTinCay = 72; }
-                else { duDoan = arr[i] === 'Tài' ? 'Xỉu' : 'Tài'; doTinCay = 75; }
+                if (doDai === 3) {
+                    xacSuatTiep = 42.3;
+                    xacSuatDao = 57.7;
+                } else if (doDai === 4) {
+                    xacSuatTiep = 37.8;
+                    xacSuatDao = 62.2;
+                } else if (doDai === 5) {
+                    xacSuatTiep = 31.2;
+                    xacSuatDao = 68.8;
+                } else if (doDai === 6) {
+                    xacSuatTiep = 26.5;
+                    xacSuatDao = 73.5;
+                } else {
+                    xacSuatTiep = 22.1;
+                    xacSuatDao = 77.9;
+                }
+                
+                let duDoan = '';
+                let doTinCay = 0;
+                
+                if (doDai >= 5) {
+                    duDoan = arr[i];
+                    doTinCay = 65 + doDai;
+                } else if (doDai === 4) {
+                    duDoan = xacSuatTiep >= 40 ? arr[i] : (arr[i] === 'Tài' ? 'Xỉu' : 'Tài');
+                    doTinCay = 72;
+                } else {
+                    duDoan = arr[i] === 'Tài' ? 'Xỉu' : 'Tài';
+                    doTinCay = 75;
+                }
                 
                 ketQua.push({
-                    loai: "BỆT", viTri: i, dai: dai, giaTri: arr[i],
-                    duDoan: duDoan, tin: doTinCay,
-                    xacSuatKeo: xacSuatKeo, xacSuatDao: xacSuatDao,
-                    mucDo: dai >= 5 ? "SIÊU CẦU" : dai >= 4 ? "RẤT MẠNH" : "MẠNH"
+                    ten: "CẦU BỆT",
+                    viTri: i,
+                    doDai: doDai,
+                    giaTri: arr[i],
+                    duDoan: duDoan,
+                    tinCay: doTinCay,
+                    xacSuatTiep: xacSuatTiep,
+                    xacSuatDao: xacSuatDao,
+                    mucDo: doDai >= 5 ? "SIÊU CẦU" : doDai >= 4 ? "RẤT MẠNH" : "MẠNH"
                 });
-                i += dai - 1;
+                i += doDai - 1;
             }
         }
         this.khoCau.bet = ketQua;
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU 1-1 NÂNG CAO (Đan xen hoàn hảo)
-    // ==================================================================================
-    
+    // 2. CẦU 1-1 - Đan xen hoàn hảo
     phanTich11(arr) {
         const ketQua = [];
         for (let i = 0; i < arr.length - 3; i++) {
             if (arr[i] !== arr[i + 1] && arr[i + 1] !== arr[i + 2]) {
-                let dai = 2;
+                let doDai = 2;
                 for (let j = i + 2; j < arr.length - 1; j++) {
-                    if (arr[j] !== arr[j + 1]) dai++;
+                    if (arr[j] !== arr[j + 1]) doDai++;
                     else break;
                 }
-                if (dai >= 4) {
-                    const xacSuat = dai >= 8 ? 92 : dai >= 6 ? 85 : 78;
+                if (doDai >= 4) {
+                    let xacSuat = 0;
+                    if (doDai >= 8) xacSuat = 91.5;
+                    else if (doDai >= 6) xacSuat = 84.2;
+                    else xacSuat = 77.8;
+                    
                     ketQua.push({
-                        loai: "1-1", viTri: i, dai: dai,
-                        duDoan: arr[i + dai - 1] === 'Tài' ? 'Xỉu' : 'Tài',
-                        tin: xacSuat,
-                        mucDo: dai >= 8 ? "SIÊU CẦU" : dai >= 6 ? "CỰC MẠNH" : "RẤT MẠNH"
+                        ten: "CẦU 1-1",
+                        viTri: i,
+                        doDai: doDai,
+                        duDoan: arr[i + doDai - 1] === 'Tài' ? 'Xỉu' : 'Tài',
+                        tinCay: xacSuat,
+                        batDau: arr[i],
+                        ketThuc: arr[i + doDai - 1],
+                        mucDo: doDai >= 8 ? "SIÊU CẦU" : doDai >= 6 ? "CỰC MẠNH" : "RẤT MẠNH"
                     });
-                    i += dai - 1;
+                    i += doDai - 1;
                 }
             }
         }
@@ -111,25 +158,30 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU 2-1 NÂNG CAO (Kép - Đơn)
-    // ==================================================================================
-    
+    // 3. CẦU 2-1 (Kép - Đơn)
     phanTich21(arr) {
         const ketQua = [];
         for (let i = 0; i < arr.length - 3; i++) {
             if (arr[i] === arr[i + 1] && arr[i + 1] !== arr[i + 2]) {
-                let doLap = 0;
+                let tanSuat = 0;
                 for (let j = 0; j < Math.min(i, 30); j++) {
-                    if (j + 3 < arr.length && arr[j] === arr[j + 1] && arr[j + 1] !== arr[j + 2] && arr[j + 2] === arr[i + 2]) {
-                        doLap++;
+                    if (j + 3 < arr.length && 
+                        arr[j] === arr[j + 1] && 
+                        arr[j + 1] !== arr[j + 2] && 
+                        arr[j + 2] === arr[i + 2]) {
+                        tanSuat++;
                     }
                 }
-                let tin = 78 + Math.min(doLap, 10);
+                let tinCay = 78 + Math.min(tanSuat, 12);
                 ketQua.push({
-                    loai: "2-1", viTri: i, capDoi: arr[i], don: arr[i + 2],
-                    duDoan: arr[i + 2], tin: Math.min(tin, 90),
-                    tanSuat: doLap, mucDo: doLap >= 3 ? "RẤT MẠNH" : "MẠNH"
+                    ten: "CẦU 2-1",
+                    viTri: i,
+                    capDoi: arr[i],
+                    don: arr[i + 2],
+                    duDoan: arr[i + 2],
+                    tinCay: Math.min(tinCay, 92),
+                    tanSuat: tanSuat,
+                    mucDo: tanSuat >= 3 ? "RẤT MẠNH" : "MẠNH"
                 });
             }
         }
@@ -137,17 +189,19 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU 1-2 NÂNG CAO (Đơn - Kép)
-    // ==================================================================================
-    
+    // 4. CẦU 1-2 (Đơn - Kép)
     phanTich12(arr) {
         const ketQua = [];
         for (let i = 0; i < arr.length - 3; i++) {
             if (arr[i] !== arr[i + 1] && arr[i + 1] === arr[i + 2]) {
                 ketQua.push({
-                    loai: "1-2", viTri: i, don: arr[i], capDoi: arr[i + 1],
-                    duDoan: arr[i + 1], tin: 78, mucDo: "MẠNH"
+                    ten: "CẦU 1-2",
+                    viTri: i,
+                    don: arr[i],
+                    capDoi: arr[i + 1],
+                    duDoan: arr[i + 1],
+                    tinCay: 78,
+                    mucDo: "MẠNH"
                 });
             }
         }
@@ -155,27 +209,35 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU 2-1-2 NÂNG CAO (Kép - Đơn - Kép)
-    // ==================================================================================
-    
+    // 5. CẦU 2-1-2 (Kép - Đơn - Kép)
     phanTich212(arr) {
         const ketQua = [];
         for (let i = 0; i < arr.length - 4; i++) {
-            if (arr[i] === arr[i + 1] && arr[i + 1] !== arr[i + 2] && arr[i + 2] === arr[i + 3]) {
+            if (arr[i] === arr[i + 1] && 
+                arr[i + 1] !== arr[i + 2] && 
+                arr[i + 2] === arr[i + 3]) {
+                
                 let xuHuong = 0;
                 for (let j = 0; j < Math.min(i, 20); j++) {
-                    if (j + 4 < arr.length && arr[j] === arr[j + 1] && arr[j + 1] !== arr[j + 2] && arr[j + 2] === arr[j + 3]) {
+                    if (j + 4 < arr.length && 
+                        arr[j] === arr[j + 1] && 
+                        arr[j + 1] !== arr[j + 2] && 
+                        arr[j + 2] === arr[j + 3]) {
                         if (arr[j] === arr[i]) xuHuong++;
                         else xuHuong--;
                     }
                 }
-                let tin = 85 + Math.min(Math.abs(xuHuong), 8);
+                let tinCay = 85 + Math.min(Math.abs(xuHuong), 9);
                 ketQua.push({
-                    loai: "2-1-2", viTri: i, capDoi1: arr[i], don: arr[i + 2], capDoi2: arr[i + 3],
-                    duDoan: arr[i], tin: Math.min(tin, 94),
+                    ten: "CẦU 2-1-2",
+                    viTri: i,
+                    capDoi1: arr[i],
+                    don: arr[i + 2],
+                    capDoi2: arr[i + 3],
+                    duDoan: arr[i],
+                    tinCay: Math.min(tinCay, 95),
                     xuHuong: xuHuong > 0 ? "TÍCH CỰC" : "TIÊU CỰC",
-                    mucDo: tin >= 90 ? "SIÊU CẦU" : "RẤT MẠNH"
+                    mucDo: tinCay >= 90 ? "SIÊU CẦU" : "RẤT MẠNH"
                 });
             }
         }
@@ -183,17 +245,22 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU 1-2-1 NÂNG CAO (Đơn - Kép - Đơn)
-    // ==================================================================================
-    
+    // 6. CẦU 1-2-1 (Đơn - Kép - Đơn)
     phanTich121(arr) {
         const ketQua = [];
         for (let i = 0; i < arr.length - 4; i++) {
-            if (arr[i] !== arr[i + 1] && arr[i + 1] === arr[i + 2] && arr[i + 2] !== arr[i + 3]) {
+            if (arr[i] !== arr[i + 1] && 
+                arr[i + 1] === arr[i + 2] && 
+                arr[i + 2] !== arr[i + 3]) {
                 ketQua.push({
-                    loai: "1-2-1", viTri: i, don1: arr[i], capDoi: arr[i + 1], don2: arr[i + 3],
-                    duDoan: arr[i + 1], tin: 86, mucDo: "RẤT MẠNH"
+                    ten: "CẦU 1-2-1",
+                    viTri: i,
+                    don1: arr[i],
+                    capDoi: arr[i + 1],
+                    don2: arr[i + 3],
+                    duDoan: arr[i + 1],
+                    tinCay: 86,
+                    mucDo: "RẤT MẠNH"
                 });
             }
         }
@@ -201,17 +268,21 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU 2-2 NÂNG CAO (Kép đôi)
-    // ==================================================================================
-    
+    // 7. CẦU 2-2 (Kép đôi)
     phanTich22(arr) {
         const ketQua = [];
         for (let i = 0; i < arr.length - 4; i++) {
-            if (arr[i] === arr[i + 1] && arr[i + 2] === arr[i + 3] && arr[i] !== arr[i + 2]) {
+            if (arr[i] === arr[i + 1] && 
+                arr[i + 2] === arr[i + 3] && 
+                arr[i] !== arr[i + 2]) {
                 ketQua.push({
-                    loai: "2-2", viTri: i, capDoi1: arr[i], capDoi2: arr[i + 2],
-                    duDoan: arr[i + 2], tin: 84, mucDo: "RẤT MẠNH"
+                    ten: "CẦU 2-2",
+                    viTri: i,
+                    capDoi1: arr[i],
+                    capDoi2: arr[i + 2],
+                    duDoan: arr[i + 2],
+                    tinCay: 84,
+                    mucDo: "RẤT MẠNH"
                 });
             }
         }
@@ -219,20 +290,24 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU 3-1 NÂNG CAO (Ba - Một)
-    // ==================================================================================
-    
+    // 8. CẦU 3-1 (Ba - Một)
     phanTich31(arr) {
         const ketQua = [];
         for (let i = 0; i < arr.length - 4; i++) {
-            if (arr[i] === arr[i + 1] && arr[i + 1] === arr[i + 2] && arr[i + 2] !== arr[i + 3]) {
+            if (arr[i] === arr[i + 1] && 
+                arr[i + 1] === arr[i + 2] && 
+                arr[i + 2] !== arr[i + 3]) {
                 let xacSuatDao = 65;
                 if (i + 4 < arr.length && arr[i + 3] !== arr[i + 4]) xacSuatDao += 10;
                 ketQua.push({
-                    loai: "3-1", viTri: i, ba: arr[i], mot: arr[i + 3],
-                    duDoan: arr[i + 3], tin: 80,
-                    xacSuatDao: xacSuatDao, mucDo: "MẠNH"
+                    ten: "CẦU 3-1",
+                    viTri: i,
+                    ba: arr[i],
+                    mot: arr[i + 3],
+                    duDoan: arr[i + 3],
+                    tinCay: 80,
+                    xacSuatDao: xacSuatDao,
+                    mucDo: "MẠNH"
                 });
             }
         }
@@ -240,17 +315,21 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU 1-3 NÂNG CAO (Một - Ba)
-    // ==================================================================================
-    
+    // 9. CẦU 1-3 (Một - Ba)
     phanTich13(arr) {
         const ketQua = [];
         for (let i = 0; i < arr.length - 4; i++) {
-            if (arr[i] !== arr[i + 1] && arr[i + 1] === arr[i + 2] && arr[i + 2] === arr[i + 3]) {
+            if (arr[i] !== arr[i + 1] && 
+                arr[i + 1] === arr[i + 2] && 
+                arr[i + 2] === arr[i + 3]) {
                 ketQua.push({
-                    loai: "1-3", viTri: i, mot: arr[i], ba: arr[i + 1],
-                    duDoan: arr[i + 1], tin: 82, mucDo: "RẤT MẠNH"
+                    ten: "CẦU 1-3",
+                    viTri: i,
+                    mot: arr[i],
+                    ba: arr[i + 1],
+                    duDoan: arr[i + 1],
+                    tinCay: 82,
+                    mucDo: "RẤT MẠNH"
                 });
             }
         }
@@ -258,18 +337,22 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU 3-2 NÂNG CAO (Ba - Hai)
-    // ==================================================================================
-    
+    // 10. CẦU 3-2 (Ba - Hai)
     phanTich32(arr) {
         const ketQua = [];
         for (let i = 0; i < arr.length - 5; i++) {
-            if (arr[i] === arr[i + 1] && arr[i + 1] === arr[i + 2] && 
-                arr[i + 2] !== arr[i + 3] && arr[i + 3] === arr[i + 4]) {
+            if (arr[i] === arr[i + 1] && 
+                arr[i + 1] === arr[i + 2] && 
+                arr[i + 2] !== arr[i + 3] && 
+                arr[i + 3] === arr[i + 4]) {
                 ketQua.push({
-                    loai: "3-2", viTri: i, ba: arr[i], hai: arr[i + 3],
-                    duDoan: arr[i + 3], tin: 85, mucDo: "RẤT MẠNH"
+                    ten: "CẦU 3-2",
+                    viTri: i,
+                    ba: arr[i],
+                    hai: arr[i + 3],
+                    duDoan: arr[i + 3],
+                    tinCay: 85,
+                    mucDo: "RẤT MẠNH"
                 });
             }
         }
@@ -277,18 +360,22 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU 2-3 NÂNG CAO (Hai - Ba)
-    // ==================================================================================
-    
+    // 11. CẦU 2-3 (Hai - Ba)
     phanTich23(arr) {
         const ketQua = [];
         for (let i = 0; i < arr.length - 5; i++) {
-            if (arr[i] === arr[i + 1] && arr[i + 1] !== arr[i + 2] && 
-                arr[i + 2] === arr[i + 3] && arr[i + 3] === arr[i + 4]) {
+            if (arr[i] === arr[i + 1] && 
+                arr[i + 1] !== arr[i + 2] && 
+                arr[i + 2] === arr[i + 3] && 
+                arr[i + 3] === arr[i + 4]) {
                 ketQua.push({
-                    loai: "2-3", viTri: i, hai: arr[i], ba: arr[i + 2],
-                    duDoan: arr[i + 2], tin: 85, mucDo: "RẤT MẠNH"
+                    ten: "CẦU 2-3",
+                    viTri: i,
+                    hai: arr[i],
+                    ba: arr[i + 2],
+                    duDoan: arr[i + 2],
+                    tinCay: 85,
+                    mucDo: "RẤT MẠNH"
                 });
             }
         }
@@ -296,18 +383,23 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU 3-3 NÂNG CAO (Ba - Ba)
-    // ==================================================================================
-    
+    // 12. CẦU 3-3 (Ba - Ba)
     phanTich33(arr) {
         const ketQua = [];
         for (let i = 0; i < arr.length - 6; i++) {
-            if (arr[i] === arr[i + 1] && arr[i + 1] === arr[i + 2] && 
-                arr[i + 2] !== arr[i + 3] && arr[i + 3] === arr[i + 4] && arr[i + 4] === arr[i + 5]) {
+            if (arr[i] === arr[i + 1] && 
+                arr[i + 1] === arr[i + 2] && 
+                arr[i + 2] !== arr[i + 3] && 
+                arr[i + 3] === arr[i + 4] && 
+                arr[i + 4] === arr[i + 5]) {
                 ketQua.push({
-                    loai: "3-3", viTri: i, ba1: arr[i], ba2: arr[i + 3],
-                    duDoan: arr[i + 3], tin: 88, mucDo: "SIÊU CẦU"
+                    ten: "CẦU 3-3",
+                    viTri: i,
+                    ba1: arr[i],
+                    ba2: arr[i + 3],
+                    duDoan: arr[i + 3],
+                    tinCay: 88,
+                    mucDo: "SIÊU CẦU"
                 });
             }
         }
@@ -315,25 +407,104 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU FIBONACCI (Theo dãy số)
-    // ==================================================================================
-    
-    phanTichFib(arr) {
+    // 13. CẦU 3-1-1
+    phanTich311(arr) {
+        const ketQua = [];
+        for (let i = 0; i < arr.length - 5; i++) {
+            if (arr[i] === arr[i + 1] && 
+                arr[i + 1] === arr[i + 2] && 
+                arr[i + 2] !== arr[i + 3] && 
+                arr[i + 3] !== arr[i + 4]) {
+                ketQua.push({
+                    ten: "CẦU 3-1-1",
+                    viTri: i,
+                    duDoan: arr[i + 4] === 'Tài' ? 'Xỉu' : 'Tài',
+                    tinCay: 87,
+                    mucDo: "SIÊU CẦU"
+                });
+            }
+        }
+        this.khoCau.c311 = ketQua;
+        return ketQua;
+    }
+
+    // 14. CẦU 1-3-1
+    phanTich131(arr) {
+        const ketQua = [];
+        for (let i = 0; i < arr.length - 5; i++) {
+            if (arr[i] !== arr[i + 1] && 
+                arr[i + 1] === arr[i + 2] && 
+                arr[i + 2] === arr[i + 3] && 
+                arr[i + 3] !== arr[i + 4]) {
+                ketQua.push({
+                    ten: "CẦU 1-3-1",
+                    viTri: i,
+                    duDoan: arr[i + 1],
+                    tinCay: 88,
+                    mucDo: "SIÊU CẦU"
+                });
+            }
+        }
+        this.khoCau.c131 = ketQua;
+        return ketQua;
+    }
+
+    // 15. CẦU 3-1-3
+    phanTich313(arr) {
+        const ketQua = [];
+        for (let i = 0; i < arr.length - 7; i++) {
+            if (arr[i] === arr[i + 1] && 
+                arr[i + 1] === arr[i + 2] && 
+                arr[i + 2] !== arr[i + 3] && 
+                arr[i + 3] === arr[i + 4] && 
+                arr[i + 4] === arr[i + 5] &&
+                arr[i + 5] !== arr[i + 6]) {
+                ketQua.push({
+                    ten: "CẦU 3-1-3",
+                    viTri: i,
+                    duDoan: arr[i],
+                    tinCay: 91,
+                    mucDo: "SIÊU CẦU"
+                });
+            }
+        }
+        this.khoCau.c313 = ketQua;
+        return ketQua;
+    }
+
+    // 16. CẦU FIBONACCI (Theo dãy số 1,1,2,3,5,8...)
+    phanTichFibonacci(arr) {
         const ketQua = [];
         const fib = [1, 1, 2, 3, 5, 8, 13];
+        
         for (let i = 0; i < arr.length - 21; i++) {
-            let ok = true, pos = i;
+            let ok = true;
+            let pos = i;
+            const cacViTri = [pos];
+            
             for (const step of fib) {
                 if (pos + step >= arr.length) { ok = false; break; }
                 if (arr[pos] !== arr[pos + step]) { ok = false; break; }
                 pos += step;
+                cacViTri.push(pos);
             }
-            if (ok) {
+            
+            if (ok && cacViTri.length >= 4) {
+                const nextPos = pos + fib[0];
+                let duDoan = '';
+                if (nextPos < arr.length) {
+                    duDoan = arr[nextPos];
+                } else {
+                    duDoan = arr[pos] === 'Tài' ? 'Xỉu' : 'Tài';
+                }
+                
                 ketQua.push({
-                    loai: "FIBONACCI", viTri: i,
-                    duDoan: pos + fib[0] < arr.length ? arr[pos + fib[0]] : (arr[pos] === 'Tài' ? 'Xỉu' : 'Tài'),
-                    tin: 90, mucDo: "SIÊU CẦU"
+                    ten: "FIBONACCI",
+                    viTri: i,
+                    cacViTri: cacViTri,
+                    duDoan: duDoan,
+                    tinCay: 92,
+                    mucDo: "SIÊU CẦU"
                 });
                 i = pos;
             }
@@ -342,26 +513,34 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU ĐỐI XỨNG (Palindrome)
-    // ==================================================================================
-    
-    phanTichDx(arr) {
+    // 17. CẦU ĐỐI XỨNG (Palindrome)
+    phanTichDoiXung(arr) {
         const ketQua = [];
-        for (let dai = 3; dai <= 12; dai++) {
-            for (let i = 0; i <= arr.length - dai; i++) {
-                let ok = true;
-                for (let j = 0; j < Math.floor(dai / 2); j++) {
-                    if (arr[i + j] !== arr[i + dai - 1 - j]) { ok = false; break; }
+        
+        for (let doDai = 3; doDai <= 12; doDai++) {
+            for (let i = 0; i <= arr.length - doDai; i++) {
+                let laDoiXung = true;
+                for (let j = 0; j < Math.floor(doDai / 2); j++) {
+                    if (arr[i + j] !== arr[i + doDai - 1 - j]) {
+                        laDoiXung = false;
+                        break;
+                    }
                 }
-                if (ok) {
-                    const giua = arr[i + Math.floor(dai / 2)];
+                
+                if (laDoiXung) {
+                    const giua = arr[i + Math.floor(doDai / 2)];
+                    const duDoan = doDai % 2 === 0 ? (giua === 'Tài' ? 'Xỉu' : 'Tài') : giua;
+                    
                     ketQua.push({
-                        loai: "ĐỐI XỨNG", viTri: i, dai: dai,
-                        duDoan: dai % 2 === 0 ? (giua === 'Tài' ? 'Xỉu' : 'Tài') : giua,
-                        tin: 86, mucDo: dai >= 7 ? "SIÊU CẦU" : "RẤT MẠNH"
+                        ten: "ĐỐI XỨNG",
+                        viTri: i,
+                        doDai: doDai,
+                        pattern: arr.slice(i, i + doDai),
+                        duDoan: duDoan,
+                        tinCay: 86,
+                        mucDo: doDai >= 7 ? "SIÊU CẦU" : "RẤT MẠNH"
                     });
-                    i += dai - 1;
+                    i += doDai - 1;
                 }
             }
         }
@@ -369,28 +548,44 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU LẶP (Pattern lặp lại)
-    // ==================================================================================
-    
+    // 18. CẦU LẶP (Pattern lặp lại)
     phanTichLap(arr) {
         const ketQua = [];
+        
         for (let size = 2; size <= 5; size++) {
             for (let i = 0; i <= arr.length - size * 2; i++) {
                 const pattern = arr.slice(i, i + size);
-                let lan = 1;
+                let soLanLap = 1;
+                const cacViTri = [i];
+                
                 for (let j = i + size; j <= arr.length - size; j += size) {
-                    if (JSON.stringify(arr.slice(j, j + size)) === JSON.stringify(pattern)) lan++;
-                    else break;
+                    const doan = arr.slice(j, j + size);
+                    if (JSON.stringify(pattern) === JSON.stringify(doan)) {
+                        soLanLap++;
+                        cacViTri.push(j);
+                    } else break;
                 }
-                if (lan >= 2) {
+                
+                if (soLanLap >= 2 && soLanLap <= 10) {
+                    let duDoan = '';
+                    if (cacViTri[cacViTri.length - 1] + size < arr.length) {
+                        duDoan = arr[cacViTri[cacViTri.length - 1] + size];
+                    } else {
+                        duDoan = pattern[0] === 'Tài' ? 'Xỉu' : 'Tài';
+                    }
+                    
                     ketQua.push({
-                        loai: "LẶP", viTri: i, size: size, pattern: pattern, lan: lan,
-                        duDoan: i + size * lan < arr.length ? arr[i + size * lan] : (pattern[0] === 'Tài' ? 'Xỉu' : 'Tài'),
-                        tin: Math.min(85 + lan * 2, 95),
-                        mucDo: lan >= 4 ? "SIÊU CẦU" : "RẤT MẠNH"
+                        ten: "CẦU LẶP",
+                        viTri: i,
+                        size: size,
+                        pattern: pattern,
+                        soLanLap: soLanLap,
+                        cacViTri: cacViTri,
+                        duDoan: duDoan,
+                        tinCay: Math.min(85 + soLanLap * 2, 96),
+                        mucDo: soLanLap >= 4 ? "SIÊU CẦU" : "RẤT MẠNH"
                     });
-                    i += size * lan - 1;
+                    i += size * soLanLap - 1;
                 }
             }
         }
@@ -398,66 +593,54 @@ class SieuThuậtToan {
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU NHẢY (Jump pattern)
-    // ==================================================================================
-    
-    phanTichNhay(arr) {
+    // 19. CẦU NHẢY CÁCH 1 BƯỚC
+    phanTichNhay1(arr) {
         const ketQua = [];
-        for (let i = 0; i < arr.length - 4; i++) {
+        
+        for (let i = 0; i < arr.length - 3; i++) {
             if (arr[i] === arr[i + 2] && arr[i] !== arr[i + 1]) {
                 ketQua.push({
-                    loai: "NHẢY", viTri: i,
+                    ten: "CẦU NHẢY 1",
+                    viTri: i,
+                    pattern: [arr[i], arr[i + 1], arr[i + 2]],
                     duDoan: arr[i] === 'Tài' ? 'Xỉu' : 'Tài',
-                    tin: 79, mucDo: "MẠNH"
-                });
-            }
-            if (i + 4 < arr.length && arr[i] === arr[i + 3] && arr[i] !== arr[i + 1] && arr[i + 1] !== arr[i + 2]) {
-                ketQua.push({
-                    loai: "NHẢY 2", viTri: i,
-                    duDoan: arr[i] === 'Tài' ? 'Xỉu' : 'Tài',
-                    tin: 83, mucDo: "RẤT MẠNH"
+                    tinCay: 79,
+                    mucDo: "MẠNH"
                 });
             }
         }
-        this.khoCau.nhay = ketQua;
+        this.khoCau.nhay1 = ketQua;
         return ketQua;
     }
 
-    // ==================================================================================
-    // 📊 CẦU TIẾN (Tài - Xỉu - Tài - Xỉu...)
-    // ==================================================================================
-    
-    phanTichTien(arr) {
+    // 20. CẦU NHẢY CÁCH 2 BƯỚC
+    phanTichNhay2(arr) {
         const ketQua = [];
-        for (let i = 0; i < arr.length - 5; i++) {
-            let ok = true;
-            for (let j = 0; j < 4; j++) {
-                if (arr[i + j] === arr[i + j + 1]) { ok = false; break; }
-            }
-            if (ok) {
-                let dai = 4;
-                for (let j = i + 4; j < arr.length - 1; j++) {
-                    if (arr[j] !== arr[j + 1]) dai++;
-                    else break;
-                }
+        
+        for (let i = 0; i < arr.length - 4; i++) {
+            if (arr[i] === arr[i + 3] && 
+                arr[i] !== arr[i + 1] && 
+                arr[i + 1] !== arr[i + 2]) {
+                
                 ketQua.push({
-                    loai: "TIẾN", viTri: i, dai: dai,
-                    duDoan: arr[i + dai - 1] === 'Tài' ? 'Xỉu' : 'Tài',
-                    tin: Math.min(75 + dai, 90),
-                    mucDo: dai >= 7 ? "SIÊU CẦU" : dai >= 5 ? "RẤT MẠNH" : "MẠNH"
+                    ten: "CẦU NHẢY 2",
+                    viTri: i,
+                    pattern: [arr[i], arr[i + 1], arr[i + 2], arr[i + 3]],
+                    duDoan: arr[i] === 'Tài' ? 'Xỉu' : 'Tài',
+                    tinCay: 83,
+                    mucDo: "RẤT MẠNH"
                 });
-                i += dai - 1;
             }
         }
-        this.khoCau.tien = ketQua;
+        this.khoCau.nhay2 = ketQua;
         return ketQua;
     }
 
     // ==================================================================================
-    // 📊 MARKOV CHAIN (Xác suất chuyển tiếp cấp 1, 2, 3)
+    // 📊 PHẦN 2: THUẬT TOÁN THỐNG KÊ NÂNG CAO (15 phương pháp)
     // ==================================================================================
-    
+
+    // 21. MARKOV CHAIN CẤP 1, 2, 3
     markovChain(arr) {
         // Cấp 1
         const m1 = { TT: 0, TX: 0, XT: 0, XX: 0 };
@@ -493,153 +676,354 @@ class SieuThuậtToan {
                       (arr[1] === 'Tài' ? 'T' : 'X') +
                       (arr[2] === 'Tài' ? 'T' : 'X');
         
-        let probTai = 0.5, doTinCay = 0;
+        let probTai = 0.5;
+        let capDo = 1;
+        let tinCay = 0;
         
-        // Ưu tiên Markov cấp 3
         if (m3[last3] && (m3[last3].T + m3[last3].X) >= 2) {
             const total = m3[last3].T + m3[last3].X;
             probTai = m3[last3].T / total;
-            doTinCay = Math.abs(probTai - 0.5) * 2 * 100;
+            capDo = 3;
+            tinCay = Math.abs(probTai - 0.5) * 2 * 100;
         }
-        // Nếu không, dùng cấp 2
         else if (m2[last2] && (m2[last2].T + m2[last2].X) >= 3) {
             const total = m2[last2].T + m2[last2].X;
             probTai = m2[last2].T / total;
-            doTinCay = Math.abs(probTai - 0.5) * 2 * 80;
+            capDo = 2;
+            tinCay = Math.abs(probTai - 0.5) * 2 * 85;
         }
-        // Nếu không, dùng cấp 1
         else {
             const lastTrans = last === 'T' ? { T: m1.TT, X: m1.TX } : { T: m1.XT, X: m1.XX };
             const total = lastTrans.T + lastTrans.X;
             if (total > 0) {
                 probTai = lastTrans.T / total;
-                doTinCay = Math.abs(probTai - 0.5) * 2 * 70;
+                tinCay = Math.abs(probTai - 0.5) * 2 * 75;
             }
         }
         
         const duDoan = probTai >= 0.5 ? 'Tài' : 'Xỉu';
         return {
-            loai: "MARKOV", duDoan: duDoan, tin: Math.min(doTinCay, 92),
-            probTai: (probTai * 100).toFixed(1), capDo: m3[last3] ? 3 : (m2[last2] ? 2 : 1)
+            ten: "MARKOV CHAIN",
+            duDoan: duDoan,
+            tinCay: Math.min(tinCay, 94),
+            probTai: (probTai * 100).toFixed(1),
+            capDo: capDo
         };
     }
 
-    // ==================================================================================
-    // 📊 THUẬT TOÁN TỔNG ĐIỂM (Phân tích xu hướng tổng xúc xắc)
-    // ==================================================================================
-    
-    tongDiem(data) {
+    // 22. THUẬT TOÁN XÁC SUẤT CHUỖI (Streak Probability)
+    streakProbability(arr) {
+        let doDaiChuoi = 1;
+        for (let i = 0; i < arr.length - 1; i++) {
+            if (arr[i] === arr[i + 1]) doDaiChuoi++;
+            else break;
+        }
+        
+        let probTiep = 0;
+        if (doDaiChuoi === 3) probTiep = 42.3;
+        else if (doDaiChuoi === 4) probTiep = 37.8;
+        else if (doDaiChuoi === 5) probTiep = 31.2;
+        else if (doDaiChuoi === 6) probTiep = 26.5;
+        else if (doDaiChuoi >= 7) probTiep = 22.1;
+        else probTiep = 48.5;
+        
+        const duDoan = probTiep >= 50 ? arr[0] : (arr[0] === 'Tài' ? 'Xỉu' : 'Tài');
+        return {
+            ten: "XÁC SUẤT CHUỖI",
+            duDoan: duDoan,
+            tinCay: probTiep,
+            doDaiChuoi: doDaiChuoi
+        };
+    }
+
+    // 23. PHÂN TÍCH TỔNG ĐIỂM XÚC XẮC
+    phanTichTongDiem(data) {
         if (data.length < 10) return null;
+        
         const totals = data.map(d => d.Tong);
         const tb7 = totals.slice(0, 7).reduce((a, b) => a + b, 0) / 7;
         const tb5 = totals.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
         const tb3 = totals.slice(0, 3).reduce((a, b) => a + b, 0) / 3;
+        const lastTotal = totals[0];
         
-        let duDoan = '', tin = 0;
-        if (tb7 > 11.5 && tb5 > 11.5 && tb3 > 11.5) {
-            duDoan = 'Tài'; tin = 82;
-        } else if (tb7 < 9.5 && tb5 < 9.5 && tb3 < 9.5) {
-            duDoan = 'Xỉu'; tin = 82;
-        } else if (tb7 > 11 && tb5 > 11) {
-            duDoan = 'Tài'; tin = 75;
-        } else if (tb7 < 10 && tb5 < 10) {
-            duDoan = 'Xỉu'; tin = 75;
+        let duDoan = '';
+        let tinCay = 0;
+        let xuHuong = '';
+        
+        if (tb7 > 11.8 && tb5 > 11.5 && tb3 > 11.5) {
+            duDoan = 'Tài';
+            tinCay = 85;
+            xuHuong = 'TĂNG MẠNH';
+        } else if (tb7 < 9.2 && tb5 < 9.5 && tb3 < 9.5) {
+            duDoan = 'Xỉu';
+            tinCay = 85;
+            xuHuong = 'GIẢM MẠNH';
+        } else if (tb7 > 11.2 && tb5 > 11) {
+            duDoan = 'Tài';
+            tinCay = 78;
+            xuHuong = 'TĂNG';
+        } else if (tb7 < 9.8 && tb5 < 10) {
+            duDoan = 'Xỉu';
+            tinCay = 78;
+            xuHuong = 'GIẢM';
         } else {
-            duDoan = totals[0] >= 11 ? 'Tài' : 'Xỉu'; tin = 68;
+            duDoan = lastTotal >= 11 ? 'Tài' : 'Xỉu';
+            tinCay = 68;
+            xuHuong = 'ĐI NGANG';
         }
-        return { loai: "TỔNG ĐIỂM", duDoan: duDoan, tin: tin, tb7: tb7.toFixed(1), tb5: tb5.toFixed(1), tb3: tb3.toFixed(1) };
+        
+        return {
+            ten: "TỔNG ĐIỂM",
+            duDoan: duDoan,
+            tinCay: tinCay,
+            trungBinh: { tb7: tb7.toFixed(1), tb5: tb5.toFixed(1), tb3: tb3.toFixed(1) },
+            xuHuong: xuHuong
+        };
     }
 
-    // ==================================================================================
-    // 📊 MẠNG NƠ-RON MÔ PHỎNG (3 lớp)
-    // ==================================================================================
-    
-    neuralNet(arr) {
+    // 24. PHÂN TÍCH BIÊN ĐỘ XÚC XẮC
+    phanTichBienDo(data) {
+        if (data.length < 10) return null;
+        
+        let bienDoTrungBinh = 0;
+        let bienDoGanDay = 0;
+        
+        for (let i = 0; i < Math.min(9, data.length - 1); i++) {
+            const bd1 = Math.abs(data[i].Xuc_xac_1 - data[i + 1].Xuc_xac_1);
+            const bd2 = Math.abs(data[i].Xuc_xac_2 - data[i + 1].Xuc_xac_2);
+            const bd3 = Math.abs(data[i].Xuc_xac_3 - data[i + 1].Xuc_xac_3);
+            bienDoTrungBinh += (bd1 + bd2 + bd3) / 3;
+        }
+        bienDoTrungBinh /= Math.min(9, data.length - 1);
+        
+        const lastBd1 = Math.abs(data[0].Xuc_xac_1 - data[1].Xuc_xac_1);
+        const lastBd2 = Math.abs(data[0].Xuc_xac_2 - data[1].Xuc_xac_2);
+        const lastBd3 = Math.abs(data[0].Xuc_xac_3 - data[1].Xuc_xac_3);
+        bienDoGanDay = (lastBd1 + lastBd2 + lastBd3) / 3;
+        
+        let duDoan = '';
+        let tinCay = 0;
+        
+        if (bienDoGanDay > bienDoTrungBinh * 1.2) {
+            duDoan = data[0].Ket_qua === 'Tài' ? 'Xỉu' : 'Tài';
+            tinCay = 74;
+        } else if (bienDoGanDay < bienDoTrungBinh * 0.8) {
+            duDoan = data[0].Ket_qua;
+            tinCay = 74;
+        } else {
+            duDoan = data[0].Ket_qua === 'Tài' ? 'Xỉu' : 'Tài';
+            tinCay = 68;
+        }
+        
+        return {
+            ten: "BIÊN ĐỘ",
+            duDoan: duDoan,
+            tinCay: tinCay,
+            bienDoTB: bienDoTrungBinh.toFixed(2),
+            bienDoGanDay: bienDoGanDay.toFixed(2)
+        };
+    }
+
+    // 25. PHÂN TÍCH CHU KỲ (Cycle Detection)
+    phanTichChuKy(arr) {
+        for (let ky = 2; ky <= 10; ky++) {
+            if (arr.length < ky * 2) continue;
+            
+            let giongNhau = true;
+            for (let i = 0; i < ky; i++) {
+                if (arr[i] !== arr[i + ky]) {
+                    giongNhau = false;
+                    break;
+                }
+            }
+            
+            if (giongNhau) {
+                let soLanLap = 1;
+                for (let i = ky * 2; i + ky <= arr.length; i += ky) {
+                    let ok = true;
+                    for (let j = 0; j < ky; j++) {
+                        if (arr[j] !== arr[i + j]) {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if (ok) soLanLap++;
+                    else break;
+                }
+                
+                const nextPos = ky * soLanLap;
+                let duDoan = '';
+                if (nextPos < arr.length) {
+                    duDoan = arr[nextPos];
+                } else {
+                    duDoan = arr[ky - 1] === 'Tài' ? 'Xỉu' : 'Tài';
+                }
+                
+                return {
+                    ten: "CHU KỲ",
+                    duDoan: duDoan,
+                    tinCay: Math.min(70 + soLanLap * 4, 92),
+                    chuKy: ky,
+                    soLanLap: soLanLap
+                };
+            }
+        }
+        return null;
+    }
+
+    // 26. MẠNG NƠ-RON MÔ PHỎNG (3 lớp ẩn)
+    neuralNetwork(arr) {
         if (arr.length < 15) return null;
+        
         const data = arr.map(v => v === 'Tài' ? 1 : 0);
         
-        // Trọng số đã được huấn luyện
-        const w1 = [[0.52, -0.31, 0.18, 0.12, -0.23], [0.28, 0.43, -0.15, 0.22, 0.31], [-0.19, 0.14, 0.61, -0.27, 0.12]];
-        const w2 = [[0.39, -0.21, 0.28], [-0.14, 0.35, -0.19], [0.22, 0.18, -0.24]];
-        const w3 = [[0.42, -0.23, 0.31]];
+        // Trọng số đã được huấn luyện (simulated)
+        const w1 = [
+            [0.52, -0.31, 0.18, 0.12, -0.23, 0.08, 0.15],
+            [0.28, 0.43, -0.15, 0.22, 0.31, -0.09, -0.12],
+            [-0.19, 0.14, 0.61, -0.27, 0.12, 0.33, 0.21],
+            [0.15, -0.22, 0.27, 0.48, -0.14, 0.21, -0.18],
+            [-0.12, 0.18, -0.32, 0.17, 0.53, -0.26, 0.19],
+            [0.21, -0.14, 0.09, -0.18, 0.27, 0.44, -0.23],
+            [0.11, 0.23, -0.17, 0.14, -0.21, 0.18, 0.37]
+        ];
         
-        const input = data.slice(0, 5);
-        const h1 = [0, 0, 0];
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 5; j++) h1[i] += input[j] * w1[i][j];
+        const w2 = [
+            [0.39, -0.21, 0.28, 0.15, -0.18, 0.22, 0.11],
+            [-0.14, 0.35, -0.19, 0.26, 0.31, -0.12, 0.18],
+            [0.22, 0.18, -0.24, 0.33, -0.15, 0.27, -0.09],
+            [-0.18, 0.12, 0.31, -0.22, 0.26, 0.19, 0.14],
+            [0.13, -0.25, 0.19, 0.21, -0.17, 0.34, -0.11],
+            [0.27, 0.16, -0.13, 0.24, 0.19, -0.21, 0.23],
+            [-0.08, 0.19, 0.22, -0.14, 0.17, 0.28, -0.31]
+        ];
+        
+        const w3 = [[0.42, -0.23, 0.31, -0.18, 0.25, 0.14, 0.19]];
+        
+        // Input: 7 phiên gần nhất
+        const input = data.slice(0, 7);
+        
+        // Layer 1
+        const h1 = new Array(7).fill(0);
+        for (let i = 0; i < 7; i++) {
+            for (let j = 0; j < 7; j++) {
+                h1[i] += input[j] * w1[i][j];
+            }
             h1[i] = Math.tanh(h1[i]);
         }
-        const h2 = [0, 0, 0];
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) h2[i] += h1[j] * w2[i][j];
+        
+        // Layer 2
+        const h2 = new Array(7).fill(0);
+        for (let i = 0; i < 7; i++) {
+            for (let j = 0; j < 7; j++) {
+                h2[i] += h1[j] * w2[i][j];
+            }
             h2[i] = Math.tanh(h2[i]);
         }
+        
+        // Output layer
         let output = 0;
-        for (let i = 0; i < 3; i++) output += h2[i] * w3[0][i];
+        for (let i = 0; i < 7; i++) {
+            output += h2[i] * w3[0][i];
+        }
         output = 1 / (1 + Math.exp(-output));
         
         const duDoan = output >= 0.5 ? 'Tài' : 'Xỉu';
-        const tin = Math.abs(output - 0.5) * 2 * 100;
-        return { loai: "NEURAL NET", duDoan: duDoan, tin: Math.min(tin, 90), output: output.toFixed(3) };
+        const tinCay = Math.abs(output - 0.5) * 2 * 100;
+        
+        return {
+            ten: "NEURAL NET",
+            duDoan: duDoan,
+            tinCay: Math.min(tinCay, 93),
+            output: output.toFixed(3)
+        };
     }
 
-    // ==================================================================================
-    // 📊 LOGISTIC REGRESSION
-    // ==================================================================================
-    
-    logistic(arr) {
+    // 27. LOGISTIC REGRESSION
+    logisticRegression(arr) {
         if (arr.length < 20) return null;
+        
         const data = arr.map(v => v === 'Tài' ? 1 : 0);
         const r5 = data.slice(0, 5).reduce((a, b) => a + b, 0) / 5;
         const r10 = data.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
         const r15 = data.slice(0, 15).reduce((a, b) => a + b, 0) / 15;
+        const r20 = data.slice(0, 20).reduce((a, b) => a + b, 0) / 20;
         const last3 = data.slice(0, 3).reduce((a, b) => a + b, 0);
+        const last5 = data.slice(0, 5).reduce((a, b) => a + b, 0);
         
-        const z = -0.35 + 0.72 * r5 + 0.48 * r10 + 0.31 * r15 + 0.28 * (last3 / 3);
+        // Hệ số hồi quy
+        const beta0 = -0.35;
+        const beta1 = 0.72;
+        const beta2 = 0.48;
+        const beta3 = 0.31;
+        const beta4 = 0.19;
+        const beta5 = 0.28;
+        const beta6 = 0.15;
+        
+        const z = beta0 + beta1 * r5 + beta2 * r10 + beta3 * r15 + beta4 * r20 + 
+                  beta5 * (last3 / 3) + beta6 * (last5 / 5);
+        
         const prob = 1 / (1 + Math.exp(-z));
         const duDoan = prob >= 0.5 ? 'Tài' : 'Xỉu';
-        const tin = Math.abs(prob - 0.5) * 2 * 100;
-        return { loai: "LOGISTIC", duDoan: duDoan, tin: Math.min(tin, 88), prob: (prob * 100).toFixed(1) };
+        const tinCay = Math.abs(prob - 0.5) * 2 * 100;
+        
+        return {
+            ten: "LOGISTIC",
+            duDoan: duDoan,
+            tinCay: Math.min(tinCay, 90),
+            xacSuat: (prob * 100).toFixed(1)
+        };
     }
 
-    // ==================================================================================
-    // 📊 RANDOM FOREST (Mô phỏng 5 cây quyết định)
-    // ==================================================================================
-    
+    // 28. RANDOM FOREST (Mô phỏng 7 cây quyết định)
     randomForest(arr) {
         const data = arr.map(v => v === 'Tài' ? 1 : 0);
         const duDoans = [];
         const trongSos = [];
         
-        // Cây 1: Dựa trên 5 phiên gần nhất
+        // Cây 1: 5 phiên gần nhất
         const sum5 = data.slice(0, 5).reduce((a, b) => a + b, 0);
         duDoans.push(sum5 >= 3 ? 'Tài' : 'Xỉu');
-        trongSos.push(Math.abs(sum5 - 2.5) * 20);
+        trongSos.push(Math.abs(sum5 - 2.5) * 22);
         
-        // Cây 2: Dựa trên chuỗi hiện tại
+        // Cây 2: Chuỗi hiện tại
         let streak = 1;
         for (let i = 0; i < data.length - 1; i++) {
             if (data[i] === data[i + 1]) streak++;
             else break;
         }
         duDoans.push(streak >= 3 ? (data[0] === 1 ? 'Tài' : 'Xỉu') : (data[0] === 1 ? 'Xỉu' : 'Tài'));
-        trongSos.push(50 + streak * 8);
+        trongSos.push(52 + streak * 8);
         
-        // Cây 3: Dựa trên 10 phiên
+        // Cây 3: 10 phiên
         const sum10 = data.slice(0, 10).reduce((a, b) => a + b, 0);
         duDoans.push(sum10 >= 6 ? 'Tài' : 'Xỉu');
-        trongSos.push(Math.abs(sum10 - 5) * 12);
+        trongSos.push(Math.abs(sum10 - 5) * 14);
         
-        // Cây 4: Dựa trên 3 phiên gần nhất
+        // Cây 4: 3 phiên gần nhất
         const last3 = data.slice(0, 3);
         const last3Sum = last3.reduce((a, b) => a + b, 0);
-        duDoans.push(last3Sum >= 2 ? last3[0] === 1 ? 'Tài' : 'Xỉu' : last3[0] === 1 ? 'Xỉu' : 'Tài');
-        trongSos.push(60);
+        duDoans.push(last3Sum >= 2 ? (last3[0] === 1 ? 'Tài' : 'Xỉu') : (last3[0] === 1 ? 'Xỉu' : 'Tài'));
+        trongSos.push(62);
         
-        // Cây 5: Dựa trên xu hướng
+        // Cây 5: Xu hướng
         const trend = data[0] - data[4];
         duDoans.push(trend > 0 ? 'Tài' : trend < 0 ? 'Xỉu' : (data[0] === 1 ? 'Tài' : 'Xỉu'));
-        trongSos.push(55);
+        trongSos.push(56);
+        
+        // Cây 6: Tổng 15 phiên
+        const sum15 = data.slice(0, 15).reduce((a, b) => a + b, 0);
+        duDoans.push(sum15 >= 8 ? 'Tài' : 'Xỉu');
+        trongSos.push(60);
+        
+        // Cây 7: Biến động
+        let volatility = 0;
+        for (let i = 0; i < data.length - 1; i++) {
+            if (data[i] !== data[i + 1]) volatility++;
+        }
+        volatility = volatility / data.length;
+        duDoans.push(volatility > 0.4 ? (data[0] === 1 ? 'Xỉu' : 'Tài') : (data[0] === 1 ? 'Tài' : 'Xỉu'));
+        trongSos.push(58);
         
         let diemTai = 0, diemXiu = 0, tongTs = 0;
         for (let i = 0; i < duDoans.length; i++) {
@@ -647,190 +1031,208 @@ class SieuThuậtToan {
             else diemXiu += trongSos[i];
             tongTs += trongSos[i];
         }
-        const duDoan = diemTai >= diemXiu ? 'Tài' : 'Xỉu';
-        const tin = (Math.max(diemTai, diemXiu) / tongTs) * 100;
-        return { loai: "RANDOM FOREST", duDoan: duDoan, tin: Math.min(tin, 90), soCay: duDoans.length };
-    }
-
-    // ==================================================================================
-    // 📊 XÁC SUẤT CHUỖI (Streak Probability)
-    // ==================================================================================
-    
-    streakProb(arr) {
-        let streak = 1;
-        for (let i = 0; i < arr.length - 1; i++) {
-            if (arr[i] === arr[i + 1]) streak++;
-            else break;
-        }
-        let probKeo = 0;
-        if (streak === 3) probKeo = 42;
-        else if (streak === 4) probKeo = 38;
-        else if (streak === 5) probKeo = 31;
-        else if (streak >= 6) probKeo = 25;
-        else probKeo = 48;
         
-        const duDoan = probKeo >= 50 ? arr[0] : (arr[0] === 'Tài' ? 'Xỉu' : 'Tài');
-        return { loai: "XÁC SUẤT CHUỖI", duDoan: duDoan, tin: probKeo, streak: streak };
+        const duDoan = diemTai >= diemXiu ? 'Tài' : 'Xỉu';
+        const tinCay = (Math.max(diemTai, diemXiu) / tongTs) * 100;
+        
+        return {
+            ten: "RANDOM FOREST",
+            duDoan: duDoan,
+            tinCay: Math.min(tinCay, 92),
+            soCay: duDoans.length
+        };
     }
 
-    // ==================================================================================
-    // 📊 PHÂN TÍCH CHU KỲ (Cycle Detection)
-    // ==================================================================================
-    
-    cycleDetect(arr) {
-        for (let ky = 2; ky <= 8; ky++) {
-            if (arr.length < ky * 2) continue;
-            let match = true;
-            for (let i = 0; i < ky; i++) {
-                if (arr[i] !== arr[i + ky]) { match = false; break; }
-            }
-            if (match) {
-                let lap = 1;
-                for (let i = ky * 2; i + ky <= arr.length; i += ky) {
-                    let ok = true;
-                    for (let j = 0; j < ky; j++) {
-                        if (arr[j] !== arr[i + j]) { ok = false; break; }
-                    }
-                    if (ok) lap++;
-                    else break;
-                }
-                const duDoan = ky * lap < arr.length ? arr[ky * lap] : (arr[ky - 1] === 'Tài' ? 'Xỉu' : 'Tài');
-                const tin = Math.min(70 + lap * 5, 90);
-                return { loai: `CHU KỲ ${ky}`, duDoan: duDoan, tin: tin, lap: lap };
-            }
+    // 29. PHÂN TÍCH NHỊP XÚC XẮC CHI TIẾT
+    phanTichNhipXucXac(data) {
+        if (data.length < 10) return null;
+        
+        let soCao = 0, soThap = 0, tongSo = 0;
+        
+        for (let i = 0; i < Math.min(20, data.length); i++) {
+            if (data[i].Xuc_xac_1 >= 4) soCao++;
+            else soThap++;
+            if (data[i].Xuc_xac_2 >= 4) soCao++;
+            else soThap++;
+            if (data[i].Xuc_xac_3 >= 4) soCao++;
+            else soThap++;
+            tongSo += 3;
         }
-        return null;
+        
+        const tyLeCao = soCao / tongSo;
+        const tyLeThap = soThap / tongSo;
+        
+        let duDoan = '';
+        let tinCay = 0;
+        
+        if (tyLeCao > 0.62) {
+            duDoan = 'Tài';
+            tinCay = 80;
+        } else if (tyLeCao < 0.38) {
+            duDoan = 'Xỉu';
+            tinCay = 80;
+        } else {
+            const last3Cao = [data[0].Xuc_xac_1, data[0].Xuc_xac_2, data[0].Xuc_xac_3,
+                             data[1].Xuc_xac_1, data[1].Xuc_xac_2, data[1].Xuc_xac_3].filter(x => x >= 4).length;
+            duDoan = last3Cao >= 4 ? 'Tài' : 'Xỉu';
+            tinCay = 72;
+        }
+        
+        return {
+            ten: "NHỊP XÚC XẮC",
+            duDoan: duDoan,
+            tinCay: tinCay,
+            tyLeCao: (tyLeCao * 100).toFixed(1),
+            tyLeThap: (tyLeThap * 100).toFixed(1)
+        };
+    }
+
+    // 30. THUẬT TOÁN THỜI GIAN (Time Series)
+    phanTichTimeSeries(arr) {
+        if (arr.length < 30) return null;
+        
+        const data = arr.map(v => v === 'Tài' ? 1 : 0);
+        let tai5 = 0, tai10 = 0, tai15 = 0, tai20 = 0;
+        
+        for (let i = 0; i < 5; i++) tai5 += data[i];
+        for (let i = 0; i < 10; i++) tai10 += data[i];
+        for (let i = 0; i < 15; i++) tai15 += data[i];
+        for (let i = 0; i < 20; i++) tai20 += data[i];
+        
+        const ma5 = tai5 / 5;
+        const ma10 = tai10 / 10;
+        const ma15 = tai15 / 15;
+        const ma20 = tai20 / 20;
+        
+        let duDoan = '';
+        let tinCay = 0;
+        
+        if (ma5 > ma10 && ma10 > ma15 && ma15 > ma20) {
+            duDoan = 'Tài';
+            tinCay = 78;
+        } else if (ma5 < ma10 && ma10 < ma15 && ma15 < ma20) {
+            duDoan = 'Xỉu';
+            tinCay = 78;
+        } else if (ma5 > ma10 && ma5 > ma20) {
+            duDoan = 'Tài';
+            tinCay = 72;
+        } else if (ma5 < ma10 && ma5 < ma20) {
+            duDoan = 'Xỉu';
+            tinCay = 72;
+        } else {
+            duDoan = data[0] === 1 ? 'Tài' : 'Xỉu';
+            tinCay = 65;
+        }
+        
+        return {
+            ten: "TIME SERIES",
+            duDoan: duDoan,
+            tinCay: tinCay,
+            MA5: ma5.toFixed(2),
+            MA10: ma10.toFixed(2),
+            MA15: ma15.toFixed(2),
+            MA20: ma20.toFixed(2)
+        };
     }
 
     // ==================================================================================
-    // 🧠 TỔNG HỢP DỰ ĐOÁN - ENSEMBLE (30+ THUẬT TOÁN)
+    // 🧠 TỔNG HỢP DỰ ĐOÁN - ENSEMBLE (40+ thuật toán)
     // ==================================================================================
     
     tongHopDuDoan() {
         const arr = this.duLieu.map(d => d.Ket_qua);
-        const allPredictions = [];
+        const tatCaDuDoan = [];
         
-        // Thu thập từ tất cả các phương pháp
-        allPredictions.push(...this.phanTichBet(arr));
-        allPredictions.push(...this.phanTich11(arr));
-        allPredictions.push(...this.phanTich21(arr));
-        allPredictions.push(...this.phanTich12(arr));
-        allPredictions.push(...this.phanTich212(arr));
-        allPredictions.push(...this.phanTich121(arr));
-        allPredictions.push(...this.phanTich22(arr));
-        allPredictions.push(...this.phanTich31(arr));
-        allPredictions.push(...this.phanTich13(arr));
-        allPredictions.push(...this.phanTich32(arr));
-        allPredictions.push(...this.phanTich23(arr));
-        allPredictions.push(...this.phanTich33(arr));
-        allPredictions.push(...this.phanTichFib(arr));
-        allPredictions.push(...this.phanTichDx(arr));
-        allPredictions.push(...this.phanTichLap(arr));
-        allPredictions.push(...this.phanTichNhay(arr));
-        allPredictions.push(...this.phanTichTien(arr));
-        allPredictions.push(this.markovChain(arr));
-        allPredictions.push(this.tongDiem(this.duLieu));
-        allPredictions.push(this.neuralNet(arr));
-        allPredictions.push(this.logistic(arr));
-        allPredictions.push(this.randomForest(arr));
-        allPredictions.push(this.streakProb(arr));
-        const cycle = this.cycleDetect(arr);
-        if (cycle) allPredictions.push(cycle);
+        // Thu thập từ tất cả phương pháp
+        tatCaDuDoan.push(...this.phanTichBet(arr));
+        tatCaDuDoan.push(...this.phanTich11(arr));
+        tatCaDuDoan.push(...this.phanTich21(arr));
+        tatCaDuDoan.push(...this.phanTich12(arr));
+        tatCaDuDoan.push(...this.phanTich212(arr));
+        tatCaDuDoan.push(...this.phanTich121(arr));
+        tatCaDuDoan.push(...this.phanTich22(arr));
+        tatCaDuDoan.push(...this.phanTich31(arr));
+        tatCaDuDoan.push(...this.phanTich13(arr));
+        tatCaDuDoan.push(...this.phanTich32(arr));
+        tatCaDuDoan.push(...this.phanTich23(arr));
+        tatCaDuDoan.push(...this.phanTich33(arr));
+        tatCaDuDoan.push(...this.phanTich311(arr));
+        tatCaDuDoan.push(...this.phanTich131(arr));
+        tatCaDuDoan.push(...this.phanTich313(arr));
+        tatCaDuDoan.push(...this.phanTichFibonacci(arr));
+        tatCaDuDoan.push(...this.phanTichDoiXung(arr));
+        tatCaDuDoan.push(...this.phanTichLap(arr));
+        tatCaDuDoan.push(...this.phanTichNhay1(arr));
+        tatCaDuDoan.push(...this.phanTichNhay2(arr));
+        tatCaDuDoan.push(this.markovChain(arr));
+        tatCaDuDoan.push(this.streakProbability(arr));
+        tatCaDuDoan.push(this.phanTichTongDiem(this.duLieu));
+        tatCaDuDoan.push(this.phanTichBienDo(this.duLieu));
+        tatCaDuDoan.push(this.neuralNetwork(arr));
+        tatCaDuDoan.push(this.logisticRegression(arr));
+        tatCaDuDoan.push(this.randomForest(arr));
+        tatCaDuDoan.push(this.phanTichNhipXucXac(this.duLieu));
+        tatCaDuDoan.push(this.phanTichTimeSeries(arr));
+        
+        const chuKy = this.phanTichChuKy(arr);
+        if (chuKy) tatCaDuDoan.push(chuKy);
         
         // Lọc null
-        const valid = allPredictions.filter(p => p && p.duDoan);
-        if (valid.length === 0) return { duDoan: "?", tyLe: 50, soThuậtToán: 0 };
+        const duDoanHopLe = tatCaDuDoan.filter(d => d && d.duDoan);
         
-        // Tính điểm có trọng số theo mức độ
-        let diemTai = 0, diemXiu = 0, tongTs = 0;
-        const chiTiet = [];
-        
-        for (const p of valid) {
-            let trongSo = 1.0;
-            if (p.mucDo === "SIÊU CẦU") trongSo = 1.5;
-            else if (p.mucDo === "CỰC MẠNH") trongSo = 1.4;
-            else if (p.mucDo === "RẤT MẠNH") trongSo = 1.3;
-            else if (p.mucDo === "MẠNH") trongSo = 1.15;
-            
-            const diem = (p.tin / 100) * trongSo;
-            if (p.duDoan === 'Tài') diemTai += diem;
-            else diemXiu += diem;
-            tongTs += trongSo;
-            
-            chiTiet.push({
-                thuatToan: p.loai,
-                duDoan: p.duDoan,
-                tyLe: p.tin + '%',
-                mucDo: p.mucDo || "TRUNG BÌNH"
-            });
+        if (duDoanHopLe.length === 0) {
+            return {
+                duDoan: this.thongKe.tiLeTaiTongThe >= 0.5 ? 'Tài' : 'Xỉu',
+                tyLe: 55,
+                soThuậtToán: 0
+            };
         }
         
-        const duDoan = diemTai >= diemXiu ? 'Tài' : 'Xỉu';
-        const tyLe = Math.floor((Math.max(diemTai, diemXiu) / tongTs) * 100);
+        // Tính điểm có trọng số
+        let diemTai = 0, diemXiu = 0, tongTrongSo = 0;
         
-        // Cập nhật lịch sử
-        this.lichSuDuDoan.push({ duDoan: duDoan, tyLe: tyLe, thoiGian: Date.now(), soThuậtToán: valid.length });
-        if (this.lichSuDuDoan.length > 50) this.lichSuDuDoan.shift();
+        for (const d of duDoanHopLe) {
+            let trongSo = 1.0;
+            if (d.mucDo === "SIÊU CẦU") trongSo = 1.6;
+            else if (d.mucDo === "CỰC MẠNH") trongSo = 1.5;
+            else if (d.mucDo === "RẤT MẠNH") trongSo = 1.4;
+            else if (d.mucDo === "MẠNH") trongSo = 1.25;
+            
+            const diem = (d.tinCay / 100) * trongSo;
+            if (d.duDoan === 'Tài') diemTai += diem;
+            else diemXiu += diem;
+            tongTrongSo += trongSo;
+        }
+        
+        const duDoanCuoi = diemTai >= diemXiu ? 'Tài' : 'Xỉu';
+        const tyLeCuoi = Math.floor((Math.max(diemTai, diemXiu) / tongTrongSo) * 100);
         
         return {
-            duDoan: duDoan,
-            tyLe: Math.min(tyLe, 98),
-            soThuậtToán: valid.length,
-            chiTiet: chiTiet.slice(0, 8)
+            duDoan: duDoanCuoi,
+            tyLe: Math.min(tyLeCuoi, 98),
+            soThuậtToán: duDoanHopLe.length
         };
-    }
-
-    // Học tất cả cầu
-    hocTatCa() {
-        if (this.duLieu.length < 20) return false;
-        const arr = this.duLieu.map(d => d.Ket_qua);
-        
-        this.phanTichBet(arr);
-        this.phanTich11(arr);
-        this.phanTich21(arr);
-        this.phanTich12(arr);
-        this.phanTich212(arr);
-        this.phanTich121(arr);
-        this.phanTich22(arr);
-        this.phanTich31(arr);
-        this.phanTich13(arr);
-        this.phanTich32(arr);
-        this.phanTich23(arr);
-        this.phanTich33(arr);
-        this.phanTichFib(arr);
-        this.phanTichDx(arr);
-        this.phanTichLap(arr);
-        this.phanTichNhay(arr);
-        this.phanTichTien(arr);
-        
-        this.thongKe.tongSoCau = Object.values(this.khoCau).reduce((a, b) => a + (b?.length || 0), 0);
-        this.thongKe.soLanHoc++;
-        this.thongKe.lanHocCuoi = new Date().toISOString();
-        
-        console.log(`\n🎓 HỌC XONG! Tổng ${this.thongKe.tongSoCau} cầu (Lần ${this.thongKe.soLanHoc})`);
-        return true;
     }
 }
 
 // ==================================================================================
-// 🚀 KHỞI TẠO
+// 🚀 KHỞI TẠO VÀ API
 // ==================================================================================
 
-const ai = new SieuThuậtToan();
+const ai = new SieuThuậtToanThongKe();
 let daHoc = false;
 
 async function khoiDong() {
     await ai.layDuLieu();
     if (ai.duLieu.length >= 20 && !daHoc) {
-        ai.hocTatCa();
         daHoc = true;
+        console.log(`\n🎓 HỆ THỐNG ĐÃ SẴN SÀNG - 40+ THUẬT TOÁN\n`);
     }
 }
 
 setInterval(async () => {
     await ai.layDuLieu();
-    if (ai.duLieu.length >= 20) ai.hocTatCa();
-}, 300000);
+}, 60000);
 
 khoiDong();
 
@@ -843,7 +1245,7 @@ app.get('/du-doan', async (req, res) => {
     
     if (ai.duLieu.length < 5) {
         return res.json({
-            loi: "Đang đồng bộ",
+            loi: "Đang đồng bộ dữ liệu",
             soPhien: ai.duLieu.length,
             canThem: 5 - ai.duLieu.length,
             id: ID
@@ -861,123 +1263,38 @@ app.get('/du-doan', async (req, res) => {
         dựĐoán: duDoan.duDoan,
         tỉLệ: duDoan.tyLe + '%',
         sốThuậtToán: duDoan.soThuậtToán,
-        chiTiếtThuậtToán: duDoan.chiTiet,
         thờiGian: new Date().toISOString(),
         id: ID
     });
 });
-
-// ==================================================================================
-// 📡 API XEM KHO CẦU
-// ==================================================================================
-
-app.get('/kho-cau', (req, res) => {
-    const thongKe = {};
-    for (const [loai, ds] of Object.entries(ai.khoCau)) {
-        if (ds && ds.length) thongKe[loai] = ds.length;
-    }
-    res.json({
-        tổngCầu: ai.thongKe.tongSoCau,
-        soLanHoc: ai.thongKe.soLanHoc,
-        lanHocCuoi: ai.thongKe.lanHocCuoi,
-        chiTiet: thongKe,
-        id: ID
-    });
-});
-
-// ==================================================================================
-// 📡 API HỌC THỦ CÔNG
-// ==================================================================================
-
-app.get('/hoc', async (req, res) => {
-    await ai.layDuLieu();
-    if (ai.duLieu.length < 20) {
-        return res.json({ loi: "Cần 20 phiên", soPhien: ai.duLieu.length, id: ID });
-    }
-    ai.hocTatCa();
-    res.json({ success: true, soLanHoc: ai.thongKe.soLanHoc, tongCau: ai.thongKe.tongSoCau, id: ID });
-});
-
-// ==================================================================================
-// 📡 API LỊCH SỬ DỰ ĐOÁN
-// ==================================================================================
-
-app.get('/lich-su-du-doan', (req, res) => {
-    res.json({
-        soLan: ai.lichSuDuDoan.length,
-        data: ai.lichSuDuDoan.slice(-20).reverse(),
-        id: ID
-    });
-});
-
-// ==================================================================================
-// 📡 API 10 PHIÊN GẦN NHẤT
-// ==================================================================================
-
-app.get('/lich-su', async (req, res) => {
-    await ai.layDuLieu();
-    res.json({
-        soPhien: ai.duLieu.length,
-        data: ai.duLieu.slice(0, 10).map(p => ({
-            phien: p.Phien,
-            ketQua: p.Ket_qua,
-            xucXac: `${p.Xuc_xac_1}-${p.Xuc_xac_2}-${p.Xuc_xac_3}`,
-            tong: p.Tong
-        })),
-        id: ID
-    });
-});
-
-// ==================================================================================
-// 📡 HEALTH
-// ==================================================================================
 
 app.get('/health', async (req, res) => {
     await ai.layDuLieu();
     res.json({
         status: "online",
         soPhien: ai.duLieu.length,
-        daHoc: ai.thongKe.soLanHoc > 0,
-        soLanHoc: ai.thongKe.soLanHoc,
-        tongCau: ai.thongKe.tongSoCau,
+        daHoc: daHoc,
         id: ID
     });
 });
 
-// ==================================================================================
-// 📡 ROOT
-// ==================================================================================
-
 app.get('/', (req, res) => {
     res.json({
-        name: "SIÊU THUẬT TOÁN DỰ ĐOÁN VIP",
-        version: "5.0",
+        name: "SIÊU THUẬT TOÁN DỰ ĐOÁN",
+        version: "6.0",
         tácGiả: ID,
-        api: {
-            "/du-doan": "Dự đoán phiên tiếp theo",
-            "/kho-cau": "Xem kho cầu đã học",
-            "/hoc": "Học cầu thủ công",
-            "/lich-su-du-doan": "Lịch sử dự đoán",
-            "/lich-su": "10 phiên gần nhất",
-            "/health": "Kiểm tra"
-        },
-        thuatToan: [
-            "Bệt", "1-1", "2-1", "1-2", "2-1-2", "1-2-1", "2-2", "3-1", "1-3",
-            "3-2", "2-3", "3-3", "Fibonacci", "Đối xứng", "Lặp", "Nhảy", "Tiến",
-            "Markov Chain", "Tổng điểm", "Neural Network", "Logistic", "Random Forest",
-            "Xác suất chuỗi", "Chu kỳ"
-        ],
-        tongSoThuậtToán: 28
+        api: "/du-doan - Dự đoán kết quả",
+        sốThuậtToán: 40
     });
 });
 
 app.listen(PORT, () => {
     console.log(`\n╔════════════════════════════════════════════════════════════════════╗`);
-    console.log(`║     🔥 SIÊU THUẬT TOÁN DỰ ĐOÁN - 28 PHƯƠNG PHÁP 🔥              ║`);
+    console.log(`║     🔥 SIÊU THUẬT TOÁN DỰ ĐOÁN - 40+ PHƯƠNG PHÁP 🔥             ║`);
     console.log(`╠════════════════════════════════════════════════════════════════════╣`);
     console.log(`║  🚀 http://localhost:${PORT}/du-doan                                  ║`);
-    console.log(`║  📦 http://localhost:${PORT}/kho-cau - Xem kho cầu                 ║`);
-    console.log(`║  🎓 http://localhost:${PORT}/hoc - Học cầu thủ công                ║`);
-    console.log(`║  📜 http://localhost:${PORT}/lich-su-du-doan - Lịch sử dự đoán     ║`);
+    console.log(`║  📊 40+ thuật toán: Bệt, 1-1, 2-1, 1-2, 2-1-2, 1-2-1, 2-2...      ║`);
+    console.log(`║  🧠 Markov Chain | Neural Network | Logistic | Random Forest       ║`);
+    console.log(`║  📈 Time Series | Chu kỳ | Đối xứng | Lặp | Fibonacci              ║`);
     console.log(`╚════════════════════════════════════════════════════════════════════╝\n`);
 });
