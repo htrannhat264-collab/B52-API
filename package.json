@@ -1,11 +1,13 @@
 {
-  "name": "sieu-thuat-toan-40",
-  "version": "6.0.0",
+  "name": "max789-sieu-predictor",
+  "version": "9.0.0",
+  "description": "MAX789 Siêu Dự Đoán 9 Tầng - @tranhoang2286",
   "main": "index.js",
-  "scripts": { "start": "node index.js" },
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
-    "express": "4.18.2",
-    "axios": "1.6.2",
-    "cors": "2.8.5"
+    "express": "^4.18.2",
+    "axios": "^1.6.0"
   }
 }
