@@ -1,1447 +1,1192 @@
-const express = require('express');
 const axios = require('axios');
-const app = express();
+const express = require('express');
+const https = require('https');
 
-const PORT = process.env.PORT || 3000;
+// ======================
+// CẤU HÌNH
+// ======================
+const BASE = "https://aibcr.me";
+const LOGIN_URL = `${BASE}/login`;
+const LOBBY_URL = `${BASE}/ae/lobby`;
+const GETNEWRESULT_URL = `${BASE}/baccarat/getnewresult`;
 
-// ============================================================================
-// CẤU HÌNH HỆ THỐNG NÂNG CAO
-// ============================================================================
-const CONFIG = {
-    API_URL: 'https://expected-paying-pins-childhood.trycloudflare.com/api/tx',
-    CHECK_INTERVAL: 3000,
-    MAX_HISTORY: 1000,
-    MIN_DATA: 5,
-    MIN_CONFIDENCE: 55,                 // Tỉ lệ tối thiểu luôn > 50%
-    BASE_CONFIDENCE: 55,                // Độ tin cậy cơ bản
-    MAX_CONFIDENCE: 90,                 // Độ tin cậy tối đa
-    THREAD_COUNT: 7,                    // 7 luồng phân tích
-    ENSEMBLE_WEIGHTS: {
-        CAU_TRUYEN_THONG: 0.22,
-        CAU_NANG_CAO: 0.20,
-        THONG_KE: 0.15,
-        MARKOV: 0.15,
-        XU_HUONG: 0.12,
-        CHU_KY: 0.08,
-        PHAN_KY: 0.08
+const USERNAME = "Hoang2285";
+const PASSWORD = "hoang2010";
+
+const agent = new https.Agent({ rejectUnauthorized: false });
+let cookieJar = '';
+let baccaratData = [];
+let lastUpdate = null;
+
+const sessionData = {};
+const lastData = {};
+const patternHistory = {};
+
+// ======================
+// SESSION AXIOS
+// ======================
+const session = axios.create({
+    baseURL: BASE,
+    timeout: 30000,
+    httpsAgent: agent,
+    headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7'
     }
-};
+});
 
-// ============================================================================
-// BIẾN TOÀN CỤC
-// ============================================================================
-let history = [];
-let historyChiTiet = [];
-let stats = { 
-    total: 0, 
-    correct: 0, 
-    wrong: 0, 
-    streak: 0,
-    maxStreak: 0,
-    currentStreak: 0,
-    streakType: '',
-    byCauType: {},
-    rollingAccuracy: []
-};
+// Interceptor lưu cookie
+session.interceptors.request.use(config => {
+    if (cookieJar) config.headers.Cookie = cookieJar;
+    return config;
+});
 
-let cauHistory = [];
-let predictionHistory = [];
-let threadResults = [];
+session.interceptors.response.use(res => {
+    const setCookie = res.headers['set-cookie'];
+    if (setCookie) {
+        for (const cookie of setCookie) {
+            const [name, value] = cookie.split(';')[0].split('=');
+            if (cookieJar.includes(`${name}=`)) {
+                cookieJar = cookieJar.replace(new RegExp(`${name}=[^;]+;?`), '');
+            }
+            cookieJar += `${name}=${value}; `;
+        }
+    }
+    return res;
+});
 
-let currentData = {
-    Phien: null,
-    Xuc_xac_1: 0,
-    Xuc_xac_2: 0,
-    Xuc_xac_3: 0,
-    Tong: 0,
-    Ket_qua: '',
-    Phien_hien_tai: null,
-    Du_doan: '',
-    Loai_cau: '',
-    Mau_cau_phat_hien: '',
-    Ti_le_Tai: '55%',
-    Ti_le_Xiu: '45%',
-    Do_tin_cay: '55%',
-    Trang_thai: 'Chờ dữ liệu',
-    Ket_qua_du_doan: '',
-    Thong_ke: {
-        tong: 0,
-        dung: 0,
-        sai: 0,
-        ti_le: '0%',
-        streak_hien_tai: 0,
-        streak_cao_nhat: 0
-    },
-    Nhan_dien_cau: {
-        ten_cau: '',
-        do_dai: 0,
-        vi_tri_hien_tai: 0,
-        du_doan_tiep: '',
-        xac_suat: '55%',
-        danh_sach_cau: [],
-        so_luong_cau: 0
-    },
-    Phan_tich_chi_tiet: {
-        tong_phan_tich: 0,
-        cau_phat_hien: {},
-        ty_le_tai: 55,
-        ty_le_xiu: 45,
-        do_tin_cay: 55,
-        phan_tich_da_luong: {},
-        ensemble_score: {},
-        chi_bao_ky_thuat: {}
-    },
-    id: '@tranhoang2286'
-};
+// ======================
+// LẤY CSRF TOKEN
+// ======================
+function getCsrfToken(html) {
+    const match = html.match(/<meta\s+name="csrf-token"\s+content="([^"]+)"/);
+    return match ? match[1] : null;
+}
 
-// ============================================================================
-// HÀM LẤY DỮ LIỆU
-// ============================================================================
-async function layKetQua(retryCount = 0) {
-    const maxRetries = 3;
+// ======================
+// ĐĂNG NHẬP
+// ======================
+async function login() {
     try {
-        const response = await axios.get(CONFIG.API_URL, {
-            timeout: 8000,
-            headers: { 
-                'Cache-Control': 'no-cache',
-                'User-Agent': 'MAX789-Pro/12.0'
-            }
-        });
+        const getResp = await session.get(LOGIN_URL);
+        const token = getCsrfToken(getResp.data);
         
-        if (response.data && response.data.phien) {
-            return response.data;
-        }
+        const formData = new URLSearchParams();
+        formData.append('username', USERNAME);
+        formData.append('password', PASSWORD);
+        formData.append('_token', token);
+        formData.append('action', 'Login');
         
-        if (retryCount < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
-            return layKetQua(retryCount + 1);
-        }
+        const headers = {
+            'Referer': LOGIN_URL,
+            'Origin': BASE,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        };
         
-        return null;
+        const loginResp = await session.post(LOGIN_URL, formData.toString(), { headers });
+        return loginResp.status === 200;
     } catch (error) {
-        console.error('❌ Lỗi API:', error.message);
-        if (retryCount < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            return layKetQua(retryCount + 1);
-        }
-        return null;
+        console.error('Login error:', error.message);
+        return false;
     }
 }
 
-// ============================================================================
-// HÀM ĐẢM BẢO TỈ LỆ LUÔN > 50% (Không bao giờ 50-50)
-// ============================================================================
-function damBaoTiLe(tiLeTai, tiLeXiu) {
-    // Nếu tỉ lệ bằng 50-50, điều chỉnh dựa trên dữ liệu lịch sử
-    if (tiLeTai === 50 && tiLeXiu === 50) {
-        // Ưu tiên dựa trên xu hướng gần nhất
-        if (history.length >= 3) {
-            const last3 = history.slice(-3);
-            const taiCount = last3.filter(x => x === 'tai').length;
+// ======================
+// VÀO LOBBY
+// ======================
+async function goToLobby() {
+    try {
+        await session.get(LOBBY_URL);
+        return true;
+    } catch (error) {
+        console.error('Lobby error:', error.message);
+        return false;
+    }
+}
+
+// ======================
+// LẤY KẾT QUẢ BACCARAT
+// ======================
+async function fetchBaccaratData() {
+    try {
+        let xsrfToken = '';
+        const xsrfMatch = cookieJar.match(/XSRF-TOKEN=([^;]+)/);
+        if (xsrfMatch) xsrfToken = decodeURIComponent(xsrfMatch[1]);
+        
+        const headers = {
+            'Referer': LOBBY_URL,
+            'Origin': BASE,
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-XSRF-TOKEN': xsrfToken,
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        };
+        
+        const formData = new URLSearchParams();
+        formData.append('gameCode', 'ae');
+        
+        const resp = await session.post(GETNEWRESULT_URL, formData.toString(), { headers });
+        
+        if (resp.data && resp.data.data) {
+            const oldData = { ...baccaratData };
             
-            if (taiCount >= 2) {
-                // Xu hướng Tài -> Tỉ lệ Tài cao hơn
-                tiLeTai = 58;
-                tiLeXiu = 42;
-            } else {
-                // Xu hướng Xỉu -> Tỉ lệ Xỉu cao hơn
-                tiLeTai = 42;
-                tiLeXiu = 58;
-            }
-        } else {
-            // Mặc định ưu tiên Tài nếu chưa đủ dữ liệu
-            tiLeTai = 56;
-            tiLeXiu = 44;
-        }
-    }
-    
-    // Đảm bảo chênh lệch tối thiểu 5%
-    const chenhLech = Math.abs(tiLeTai - tiLeXiu);
-    if (chenhLech < 5) {
-        if (tiLeTai > tiLeXiu) {
-            tiLeTai = Math.min(tiLeTai + (5 - chenhLech), 85);
-            tiLeXiu = 100 - tiLeTai;
-        } else if (tiLeXiu > tiLeTai) {
-            tiLeXiu = Math.min(tiLeXiu + (5 - chenhLech), 85);
-            tiLeTai = 100 - tiLeXiu;
-        } else {
-            // Fallback
-            tiLeTai = 58;
-            tiLeXiu = 42;
-        }
-    }
-    
-    // Đảm bảo tổng = 100
-    if (tiLeTai + tiLeXiu !== 100) {
-        if (tiLeTai > tiLeXiu) {
-            tiLeXiu = 100 - tiLeTai;
-        } else {
-            tiLeTai = 100 - tiLeXiu;
-        }
-    }
-    
-    return { tiLeTai, tiLeXiu };
-}
-
-// ============================================================================
-// HÀM ĐẢM BẢO ĐỘ TIN CẬY LUÔN > 50%
-// ============================================================================
-function damBaoDoTinCay(doTinCay) {
-    // Độ tin cậy tối thiểu là 55%
-    if (doTinCay < CONFIG.MIN_CONFIDENCE) {
-        doTinCay = CONFIG.MIN_CONFIDENCE + Math.floor(Math.random() * 5);
-    }
-    
-    // Giới hạn tối đa
-    if (doTinCay > CONFIG.MAX_CONFIDENCE) {
-        doTinCay = CONFIG.MAX_CONFIDENCE;
-    }
-    
-    return doTinCay;
-}
-
-// ============================================================================
-// HÀM ĐẢM BẢO XÁC SUẤT LUÔN > 50%
-// ============================================================================
-function damBaoXacSuat(xacSuat) {
-    // Xác suất tối thiểu là 55%
-    if (xacSuat <= 50) {
-        xacSuat = CONFIG.MIN_CONFIDENCE;
-    }
-    
-    // Nếu xác suất quá thấp, tăng dựa trên dữ liệu
-    if (xacSuat < 55) {
-        xacSuat = 55 + Math.floor((history.length % 10));
-        if (xacSuat > 60) xacSuat = 60;
-    }
-    
-    if (xacSuat > CONFIG.MAX_CONFIDENCE) {
-        xacSuat = CONFIG.MAX_CONFIDENCE;
-    }
-    
-    return xacSuat;
-}
-
-// ============================================================================
-// ============ 7 LUỒNG PHÂN TÍCH CHUYÊN SÂU ============
-// ============================================================================
-
-/**
- * LUỒNG 1: Phân tích Cầu Truyền Thống
- */
-class ThreadCauTruyenThong {
-    constructor(data) {
-        this.data = data;
-        this.name = 'Cầu Truyền Thống';
-        this.weight = CONFIG.ENSEMBLE_WEIGHTS.CAU_TRUYEN_THONG;
-    }
-
-    analyze() {
-        const data = this.data;
-        const results = [];
-        
-        if (data.length < 3) return this.emptyResult();
-
-        // Cầu 1-1 (So le)
-        const cau11 = this.detectCau11(data);
-        if (cau11.detected) results.push(cau11);
-
-        // Cầu 2-2
-        const cau22 = this.detectCau22(data);
-        if (cau22.detected) results.push(cau22);
-
-        // Cầu 3-1
-        const cau31 = this.detectCau31(data);
-        if (cau31.detected) results.push(cau31);
-
-        // Cầu Bệt
-        const cauBet = this.detectCauBet(data);
-        if (cauBet.detected) results.push(cauBet);
-
-        // Cầu 2-1
-        const cau21 = this.detectCau21(data);
-        if (cau21.detected) results.push(cau21);
-
-        // Cầu 1-2
-        const cau12 = this.detectCau12(data);
-        if (cau12.detected) results.push(cau12);
-
-        // Cầu 3-2
-        const cau32 = this.detectCau32(data);
-        if (cau32.detected) results.push(cau32);
-
-        return this.aggregateResults(results);
-    }
-
-    detectCau11(data) {
-        const last4 = data.slice(-4);
-        if (last4.length < 4) return { detected: false };
-        
-        let isAlternating = true;
-        for (let i = 1; i < last4.length; i++) {
-            if (last4[i] === last4[i-1]) {
-                isAlternating = false;
-                break;
-            }
-        }
-        
-        if (isAlternating) {
-            const doDai = this.tinhDoDaiSoLe(data);
-            const next = data[data.length - 1] === 'tai' ? 'xiu' : 'tai';
-            return {
-                detected: true,
-                ten_cau: 'Cầu 1-1 (So le)',
-                do_dai: doDai,
-                du_doan: next,
-                xac_suat: damBaoXacSuat(65 + doDai * 2)
-            };
-        }
-        
-        return { detected: false };
-    }
-
-    detectCau22(data) {
-        const last4 = data.slice(-4);
-        if (last4.length < 4) return { detected: false };
-        
-        if (last4[0] === last4[1] && last4[2] === last4[3] && last4[0] !== last4[2]) {
-            const next = last4[3] === 'tai' ? 'xiu' : 'tai';
-            return {
-                detected: true,
-                ten_cau: 'Cầu 2-2',
-                do_dai: 4,
-                du_doan: next,
-                xac_suat: damBaoXacSuat(62)
-            };
-        }
-        
-        return { detected: false };
-    }
-
-    detectCau31(data) {
-        const last4 = data.slice(-4);
-        if (last4.length < 4) return { detected: false };
-        
-        if (last4[0] === last4[1] && last4[1] === last4[2] && last4[2] !== last4[3]) {
-            return {
-                detected: true,
-                ten_cau: 'Cầu 3-1',
-                do_dai: 4,
-                du_doan: last4[2],
-                xac_suat: damBaoXacSuat(60)
-            };
-        }
-        
-        if (last4[1] === last4[2] && last4[2] === last4[3] && last4[0] !== last4[1]) {
-            return {
-                detected: true,
-                ten_cau: 'Cầu 1-3',
-                do_dai: 4,
-                du_doan: last4[1],
-                xac_suat: damBaoXacSuat(60)
-            };
-        }
-        
-        return { detected: false };
-    }
-
-    detectCauBet(data) {
-        const last3 = data.slice(-3);
-        if (last3.length < 3) return { detected: false };
-        
-        if (last3.every(x => x === 'tai')) {
-            const doDai = this.tinhDoDaiBet(data, 'tai');
-            return {
-                detected: true,
-                ten_cau: 'Cầu bệt Tài',
-                do_dai: doDai,
-                du_doan: 'tai',
-                xac_suat: damBaoXacSuat(55 + doDai)
-            };
-        }
-        
-        if (last3.every(x => x === 'xiu')) {
-            const doDai = this.tinhDoDaiBet(data, 'xiu');
-            return {
-                detected: true,
-                ten_cau: 'Cầu bệt Xỉu',
-                do_dai: doDai,
-                du_doan: 'xiu',
-                xac_suat: damBaoXacSuat(55 + doDai)
-            };
-        }
-        
-        return { detected: false };
-    }
-
-    detectCau21(data) {
-        const last3 = data.slice(-3);
-        if (last3.length < 3) return { detected: false };
-        
-        if (last3[0] === last3[1] && last3[1] !== last3[2]) {
-            const next = last3[2] === 'tai' ? 'xiu' : 'tai';
-            return {
-                detected: true,
-                ten_cau: 'Cầu 2-1',
-                do_dai: 3,
-                du_doan: next,
-                xac_suat: damBaoXacSuat(58)
-            };
-        }
-        
-        return { detected: false };
-    }
-
-    detectCau12(data) {
-        const last3 = data.slice(-3);
-        if (last3.length < 3) return { detected: false };
-        
-        if (last3[0] !== last3[1] && last3[1] === last3[2]) {
-            const next = last3[0];
-            return {
-                detected: true,
-                ten_cau: 'Cầu 1-2',
-                do_dai: 3,
-                du_doan: next,
-                xac_suat: damBaoXacSuat(58)
-            };
-        }
-        
-        return { detected: false };
-    }
-
-    detectCau32(data) {
-        if (data.length < 5) return { detected: false };
-        
-        const last5 = data.slice(-5);
-        const taiCount = last5.filter(x => x === 'tai').length;
-        
-        if (taiCount === 3 || taiCount === 2) {
-            const next = taiCount >= 3 ? 'xiu' : 'tai';
-            return {
-                detected: true,
-                ten_cau: 'Cầu 3-2',
-                do_dai: 5,
-                du_doan: next,
-                xac_suat: damBaoXacSuat(60)
-            };
-        }
-        
-        return { detected: false };
-    }
-
-    tinhDoDaiSoLe(data) {
-        let count = 0;
-        for (let i = data.length - 1; i >= 0; i--) {
-            if (i > 0 && data[i] !== data[i-1]) count++;
-            else break;
-        }
-        return Math.min(count, 10);
-    }
-
-    tinhDoDaiBet(data, loai) {
-        let count = 0;
-        for (let i = data.length - 1; i >= 0; i--) {
-            if (data[i] === loai) count++;
-            else break;
-        }
-        return count;
-    }
-
-    aggregateResults(results) {
-        if (results.length === 0) {
-            return {
-                luong: this.name,
-                trong_so: this.weight,
-                du_doan: this.getFallbackPrediction(),
-                xac_suat: 55,
-                cac_cau: [],
-                so_luong_cau: 0
-            };
-        }
-
-        results.sort((a, b) => b.xac_suat - a.xac_suat);
-        const best = results[0];
-        
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: best.du_doan,
-            xac_suat: best.xac_suat,
-            cau_chinh: best.ten_cau,
-            cac_cau: results.map(r => ({ ten: r.ten_cau, du_doan: r.du_doan, xac_suat: r.xac_suat })),
-            so_luong_cau: results.length
-        };
-    }
-
-    getFallbackPrediction() {
-        if (history.length >= 3) {
-            const last3 = history.slice(-3);
-            const taiCount = last3.filter(x => x === 'tai').length;
-            return taiCount >= 2 ? 'xiu' : 'tai';
-        }
-        return 'tai';
-    }
-
-    emptyResult() {
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: this.getFallbackPrediction(),
-            xac_suat: 55,
-            cac_cau: [],
-            so_luong_cau: 0
-        };
-    }
-}
-
-/**
- * LUỒNG 2: Phân tích Cầu Nâng Cao
- */
-class ThreadCauNangCao {
-    constructor(data) {
-        this.data = data;
-        this.name = 'Cầu Nâng Cao';
-        this.weight = CONFIG.ENSEMBLE_WEIGHTS.CAU_NANG_CAO;
-    }
-
-    analyze() {
-        const data = this.data;
-        const results = [];
-        
-        if (data.length < 5) return this.emptyResult();
-
-        // Cầu Đối xứng
-        const cauDoiXung = this.detectCauDoiXung(data);
-        if (cauDoiXung.detected) results.push(cauDoiXung);
-
-        // Cầu Bậc thang
-        const cauBacThang = this.detectCauBacThang(data);
-        if (cauBacThang.detected) results.push(cauBacThang);
-
-        // Cầu Zigzag
-        const cauZigzag = this.detectCauZigzag(data);
-        if (cauZigzag.detected) results.push(cauZigzag);
-
-        // Cầu 4-2
-        const cau42 = this.detectCau42(data);
-        if (cau42.detected) results.push(cau42);
-
-        // Cầu 2-1-1
-        const cau211 = this.detectCau211(data);
-        if (cau211.detected) results.push(cau211);
-
-        return this.aggregateResults(results);
-    }
-
-    detectCauDoiXung(data) {
-        if (data.length < 6) return { detected: false };
-        
-        const last6 = data.slice(-6);
-        const left = last6.slice(0, 3);
-        const right = last6.slice(3).reverse();
-        
-        let symmetric = true;
-        for (let i = 0; i < 3; i++) {
-            if (left[i] !== right[i]) {
-                symmetric = false;
-                break;
-            }
-        }
-        
-        if (symmetric && left[0] !== left[1]) {
-            const next = data[data.length - 1] === 'tai' ? 'xiu' : 'tai';
-            return {
-                detected: true,
-                ten_cau: 'Cầu Đối xứng',
-                do_dai: 6,
-                du_doan: next,
-                xac_suat: damBaoXacSuat(58)
-            };
-        }
-        
-        return { detected: false };
-    }
-
-    detectCauBacThang(data) {
-        if (data.length < 6) return { detected: false };
-        
-        const last6 = data.slice(-6);
-        // Pattern: T-T-X-T-T-X hoặc X-X-T-X-X-T
-        if (last6[0] === last6[1] && last6[1] !== last6[2] && 
-            last6[2] === last6[3] && last6[3] === last6[4] && last6[4] !== last6[5]) {
-            const next = last6[2];
-            return {
-                detected: true,
-                ten_cau: 'Cầu Bậc thang',
-                do_dai: 6,
-                du_doan: next,
-                xac_suat: damBaoXacSuat(60)
-            };
-        }
-        
-        return { detected: false };
-    }
-
-    detectCauZigzag(data) {
-        if (data.length < 5) return { detected: false };
-        
-        const last5 = data.slice(-5);
-        // Pattern: T-X-T-X-T hoặc X-T-X-T-X
-        let zigzag = true;
-        for (let i = 1; i < 5; i++) {
-            if (last5[i] === last5[i-1]) {
-                zigzag = false;
-                break;
-            }
-        }
-        
-        if (zigzag) {
-            const next = last5[4] === 'tai' ? 'xiu' : 'tai';
-            return {
-                detected: true,
-                ten_cau: 'Cầu Zigzag',
-                do_dai: 5,
-                du_doan: next,
-                xac_suat: damBaoXacSuat(62)
-            };
-        }
-        
-        return { detected: false };
-    }
-
-    detectCau42(data) {
-        if (data.length < 6) return { detected: false };
-        
-        const last6 = data.slice(-6);
-        if (last6[0] === last6[1] && last6[1] === last6[2] && last6[2] === last6[3] && 
-            last6[3] !== last6[4] && last6[4] === last6[5]) {
-            return {
-                detected: true,
-                ten_cau: 'Cầu 4-2',
-                do_dai: 6,
-                du_doan: last6[5],
-                xac_suat: damBaoXacSuat(60)
-            };
-        }
-        
-        return { detected: false };
-    }
-
-    detectCau211(data) {
-        if (data.length < 4) return { detected: false };
-        
-        const last4 = data.slice(-4);
-        // Pattern: T-T-X-T hoặc X-X-T-X
-        if (last4[0] === last4[1] && last4[1] !== last4[2] && last4[2] === last4[3]) {
-            const next = last4[3] === 'tai' ? 'xiu' : 'tai';
-            return {
-                detected: true,
-                ten_cau: 'Cầu 2-1-1',
-                do_dai: 4,
-                du_doan: next,
-                xac_suat: damBaoXacSuat(58)
-            };
-        }
-        
-        return { detected: false };
-    }
-
-    aggregateResults(results) {
-        if (results.length === 0) {
-            return {
-                luong: this.name,
-                trong_so: this.weight,
-                du_doan: this.getFallbackPrediction(),
-                xac_suat: 55,
-                cac_cau: [],
-                so_luong_cau: 0
-            };
-        }
-
-        results.sort((a, b) => b.xac_suat - a.xac_suat);
-        const best = results[0];
-        
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: best.du_doan,
-            xac_suat: best.xac_suat,
-            cau_chinh: best.ten_cau,
-            cac_cau: results.map(r => ({ ten: r.ten_cau, du_doan: r.du_doan, xac_suat: r.xac_suat })),
-            so_luong_cau: results.length
-        };
-    }
-
-    getFallbackPrediction() {
-        if (history.length >= 5) {
-            const last5 = history.slice(-5);
-            const taiCount = last5.filter(x => x === 'tai').length;
-            return taiCount >= 3 ? 'xiu' : 'tai';
-        }
-        return 'xiu';
-    }
-
-    emptyResult() {
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: this.getFallbackPrediction(),
-            xac_suat: 55,
-            cac_cau: [],
-            so_luong_cau: 0
-        };
-    }
-}
-
-/**
- * LUỒNG 3: Phân tích Thống Kê
- */
-class ThreadThongKe {
-    constructor(data) {
-        this.data = data;
-        this.name = 'Thống Kê';
-        this.weight = CONFIG.ENSEMBLE_WEIGHTS.THONG_KE;
-    }
-
-    analyze() {
-        const data = this.data;
-        if (data.length < 3) return this.emptyResult();
-
-        const tanSuat = this.tinhTanSuat(data);
-        const chuoi = this.tinhChuoi(data);
-        const bienDong = this.tinhBienDong(data);
-
-        let diemTai = 50;
-        let diemXiu = 50;
-
-        // Tần suất
-        if (tanSuat.tai > 55) diemTai += 15;
-        else if (tanSuat.xiu > 55) diemXiu += 15;
-
-        // Chuỗi
-        if (chuoi.do_dai >= 4) {
-            if (chuoi.hien_tai === 'tai') diemXiu += 12;
-            else diemTai += 12;
-        } else if (chuoi.do_dai >= 2) {
-            if (chuoi.hien_tai === 'tai') diemTai += 8;
-            else diemXiu += 8;
-        }
-
-        // Biến động
-        if (bienDong > 70) {
-            const last = data[data.length - 1];
-            if (last === 'tai') diemXiu += 10;
-            else diemTai += 10;
-        }
-
-        // Đảm bảo không 50-50
-        if (diemTai === diemXiu) {
-            const lastCount = data.slice(-5).filter(x => x === 'tai').length;
-            if (lastCount >= 3) diemXiu += 10;
-            else diemTai += 10;
-        }
-
-        const total = diemTai + diemXiu;
-        let tiLeTai = Math.round((diemTai / total) * 100);
-        let tiLeXiu = Math.round((diemXiu / total) * 100);
-
-        // Áp dụng hàm đảm bảo tỉ lệ
-        const damBao = damBaoTiLe(tiLeTai, tiLeXiu);
-        tiLeTai = damBao.tiLeTai;
-        tiLeXiu = damBao.tiLeXiu;
-
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: tiLeTai > tiLeXiu ? 'tai' : 'xiu',
-            xac_suat: damBaoDoTinCay(Math.abs(tiLeTai - tiLeXiu) + 50),
-            chi_tiet: { tan_suat: tanSuat, chuoi: chuoi, bien_dong: bienDong }
-        };
-    }
-
-    tinhTanSuat(data) {
-        if (data.length === 0) return { tai: 55, xiu: 45 };
-        const tai = data.filter(x => x === 'tai').length;
-        let taiPercent = Math.round((tai / data.length) * 100);
-        let xiuPercent = 100 - taiPercent;
-        
-        // Đảm bảo không 50-50
-        if (taiPercent === 50) {
-            taiPercent = 52;
-            xiuPercent = 48;
-        }
-        
-        return { tai: taiPercent, xiu: xiuPercent };
-    }
-
-    tinhChuoi(data) {
-        if (data.length === 0) return { hien_tai: 'tai', do_dai: 1 };
-        const current = data[data.length - 1];
-        let count = 0;
-        for (let i = data.length - 1; i >= 0; i--) {
-            if (data[i] === current) count++;
-            else break;
-        }
-        return { hien_tai: current, do_dai: count };
-    }
-
-    tinhBienDong(data) {
-        if (data.length < 2) return 60;
-        let changes = 0;
-        for (let i = 1; i < data.length; i++) {
-            if (data[i] !== data[i-1]) changes++;
-        }
-        const tyLe = Math.round((changes / (data.length - 1)) * 100);
-        return tyLe === 50 ? 55 : tyLe;
-    }
-
-    emptyResult() {
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: 'tai',
-            xac_suat: 55,
-            chi_tiet: {}
-        };
-    }
-}
-
-/**
- * LUỒNG 4: Phân tích Markov
- */
-class ThreadMarkov {
-    constructor(data) {
-        this.data = data;
-        this.name = 'Markov Chain';
-        this.weight = CONFIG.ENSEMBLE_WEIGHTS.MARKOV;
-    }
-
-    analyze() {
-        const data = this.data;
-        if (data.length < 5) return this.emptyResult();
-
-        // Ma trận chuyển đổi bậc 1
-        let tai_sau_tai = 0, xiu_sau_tai = 0, tai_sau_xiu = 0, xiu_sau_xiu = 0;
-        
-        for (let i = 0; i < data.length - 1; i++) {
-            if (data[i] === 'tai') {
-                if (data[i+1] === 'tai') tai_sau_tai++;
-                else xiu_sau_tai++;
-            } else {
-                if (data[i+1] === 'tai') tai_sau_xiu++;
-                else xiu_sau_xiu++;
-            }
-        }
-
-        const last = data[data.length - 1];
-        let duDoan = '';
-        let xacSuat = 55;
-
-        if (last === 'tai') {
-            const total = tai_sau_tai + xiu_sau_tai;
-            if (total > 0) {
-                if (tai_sau_tai > xiu_sau_tai) {
-                    duDoan = 'tai';
-                    xacSuat = Math.round((tai_sau_tai / total) * 100);
-                } else if (xiu_sau_tai > tai_sau_tai) {
-                    duDoan = 'xiu';
-                    xacSuat = Math.round((xiu_sau_tai / total) * 100);
-                } else {
-                    // Bằng nhau -> ưu tiên theo xu hướng
-                    duDoan = tai_sau_tai >= 3 ? 'tai' : 'xiu';
-                    xacSuat = 58;
+            baccaratData = resp.data.data.map(item => ({
+                table: item.table_name,
+                result: item.result,
+                shoeId: item.shoeId || '',
+                round: item.round || ''
+            }));
+            lastUpdate = new Date().toISOString();
+            
+            for (const item of baccaratData) {
+                const tableId = item.table;
+                const oldResult = oldData.find(o => o.table === tableId);
+                
+                if (!sessionData[tableId]) {
+                    sessionData[tableId] = 0;
+                    patternHistory[tableId] = [];
                 }
-            }
-        } else {
-            const total = tai_sau_xiu + xiu_sau_xiu;
-            if (total > 0) {
-                if (tai_sau_xiu > xiu_sau_xiu) {
-                    duDoan = 'tai';
-                    xacSuat = Math.round((tai_sau_xiu / total) * 100);
-                } else if (xiu_sau_xiu > tai_sau_xiu) {
-                    duDoan = 'xiu';
-                    xacSuat = Math.round((xiu_sau_xiu / total) * 100);
-                } else {
-                    duDoan = xiu_sau_xiu >= 3 ? 'xiu' : 'tai';
-                    xacSuat = 58;
+                
+                if (oldResult && oldResult.result !== item.result) {
+                    sessionData[tableId]++;
+                    // Lưu pattern mới
+                    const patterns = detectAllPatterns(item.result);
+                    patternHistory[tableId].push({
+                        session: sessionData[tableId],
+                        patterns: patterns,
+                        timestamp: new Date().toISOString()
+                    });
+                    if (patternHistory[tableId].length > 50) {
+                        patternHistory[tableId].shift();
+                    }
+                } else if (!oldResult) {
+                    sessionData[tableId]++;
                 }
             }
         }
-
-        // Đảm bảo xác suất > 50%
-        xacSuat = damBaoXacSuat(xacSuat);
-
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: duDoan || this.getFallbackPrediction(),
-            xac_suat: xacSuat,
-            chi_tiet: { tai_sau_tai, xiu_sau_tai, tai_sau_xiu, xiu_sau_xiu }
-        };
-    }
-
-    getFallbackPrediction() {
-        return history.length >= 3 ? (history.slice(-3).filter(x => x === 'tai').length >= 2 ? 'xiu' : 'tai') : 'tai';
-    }
-
-    emptyResult() {
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: this.getFallbackPrediction(),
-            xac_suat: 55,
-            chi_tiet: {}
-        };
-    }
-}
-
-/**
- * LUỒNG 5: Phân tích Xu Hướng
- */
-class ThreadXuHuong {
-    constructor(data) {
-        this.data = data;
-        this.name = 'Xu Hướng';
-        this.weight = CONFIG.ENSEMBLE_WEIGHTS.XU_HUONG;
-    }
-
-    analyze() {
-        const data = this.data;
-        if (data.length < 10) return this.emptyResult();
-
-        const segSize = Math.floor(data.length / 3);
-        const seg1 = data.slice(0, segSize);
-        const seg2 = data.slice(segSize, 2 * segSize);
-        const seg3 = data.slice(2 * segSize);
-
-        const tai1 = seg1.filter(x => x === 'tai').length / seg1.length * 100;
-        const tai2 = seg2.filter(x => x === 'tai').length / seg2.length * 100;
-        const tai3 = seg3.filter(x => x === 'tai').length / seg3.length * 100;
-
-        let duDoan = '';
-        let xacSuat = 55;
-
-        if (tai1 < tai2 && tai2 < tai3) {
-            duDoan = 'tai';
-            xacSuat = 60;
-        } else if (tai1 > tai2 && tai2 > tai3) {
-            duDoan = 'xiu';
-            xacSuat = 60;
-        } else {
-            // Trung bình có trọng số
-            const weightedAvg = tai1 * 0.2 + tai2 * 0.3 + tai3 * 0.5;
-            duDoan = weightedAvg > 50 ? 'tai' : 'xiu';
-            xacSuat = damBaoXacSuat(Math.round(Math.abs(weightedAvg - 50) + 50));
-        }
-
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: duDoan,
-            xac_suat: xacSuat,
-            chi_tiet: { seg1: Math.round(tai1), seg2: Math.round(tai2), seg3: Math.round(tai3) }
-        };
-    }
-
-    emptyResult() {
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: 'tai',
-            xac_suat: 55,
-            chi_tiet: {}
-        };
-    }
-}
-
-/**
- * LUỒNG 6: Phân tích Chu Kỳ
- */
-class ThreadChuKy {
-    constructor(data) {
-        this.data = data;
-        this.name = 'Chu Kỳ';
-        this.weight = CONFIG.ENSEMBLE_WEIGHTS.CHU_KY;
-    }
-
-    analyze() {
-        const data = this.data;
-        if (data.length < 8) return this.emptyResult();
-
-        // Tìm chu kỳ lặp lại
-        for (let k = 2; k <= Math.min(15, Math.floor(data.length / 2)); k++) {
-            let match = 0;
-            let total = 0;
-            
-            for (let i = data.length - 1; i >= k; i--) {
-                if (data[i] === data[i - k]) match++;
-                total++;
-            }
-            
-            const ratio = match / total;
-            if (ratio > 0.55) {
-                const next = data[data.length - k];
-                return {
-                    luong: this.name,
-                    trong_so: this.weight,
-                    du_doan: next,
-                    xac_suat: damBaoXacSuat(Math.round(ratio * 100)),
-                    chi_tiet: { chu_ky: k, ty_le_khop: Math.round(ratio * 100) }
-                };
-            }
-        }
-
-        // Nếu không tìm thấy chu kỳ rõ ràng
-        const last5 = data.slice(-5);
-        const taiCount = last5.filter(x => x === 'tai').length;
         
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: taiCount >= 3 ? 'xiu' : 'tai',
-            xac_suat: 55,
-            chi_tiet: { chu_ky: 0, ty_le_khop: 0 }
-        };
-    }
-
-    emptyResult() {
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: 'xiu',
-            xac_suat: 55,
-            chi_tiet: {}
-        };
+        return baccaratData;
+    } catch (error) {
+        console.error('Fetch error:', error.message);
+        return [];
     }
 }
 
-/**
- * LUỒNG 7: Phân tích Phân Kỳ
- */
-class ThreadPhanKy {
-    constructor(data) {
-        this.data = data;
-        this.name = 'Phân Kỳ';
-        this.weight = CONFIG.ENSEMBLE_WEIGHTS.PHAN_KY;
-    }
+// ============================================================
+// NHẬN DIỆN CỰC NHIỀU CẦU BCR (25+ LOẠI CẦU)
+// ============================================================
 
-    analyze() {
-        const data = this.data;
-        if (data.length < 8) return this.emptyResult();
-
-        const tai = data.filter(x => x === 'tai').length;
-        const tyLe = tai / data.length;
-        const divergence = tyLe - 0.5;
-        
-        let duDoan = '';
-        let xacSuat = 55;
-
-        if (divergence > 0.12) {
-            duDoan = 'xiu';
-            xacSuat = Math.min(55 + Math.abs(divergence) * 80, 75);
-        } else if (divergence < -0.12) {
-            duDoan = 'tai';
-            xacSuat = Math.min(55 + Math.abs(divergence) * 80, 75);
+function detectAllPatterns(history) {
+    if (!history || history.length < 3) return { patterns: [], count: 0 };
+    
+    const arr = history.split('');
+    const detected = [];
+    
+    // ===== 1. CẦU DÂY (STREAK) =====
+    let currentStreak = 1;
+    let streakChar = arr[0];
+    for (let i = 1; i < arr.length; i++) {
+        if (arr[i] === arr[i-1]) {
+            currentStreak++;
         } else {
-            // Phân kỳ nhẹ
-            duDoan = tyLe > 0.5 ? 'xiu' : 'tai';
-            xacSuat = 56;
+            if (currentStreak >= 3) {
+                detected.push({
+                    type: 'DÂY',
+                    value: streakChar,
+                    length: currentStreak,
+                    desc: `Dây ${streakChar === 'B' ? 'Banker' : streakChar === 'P' ? 'Player' : 'Tie'} x${currentStreak}`
+                });
+            }
+            currentStreak = 1;
+            streakChar = arr[i];
         }
-
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: duDoan,
-            xac_suat: damBaoXacSuat(xacSuat),
-            chi_tiet: { ty_le_hien_tai: Math.round(tyLe * 100), do_phan_ky: Math.round(divergence * 100) }
-        };
     }
-
-    emptyResult() {
-        return {
-            luong: this.name,
-            trong_so: this.weight,
-            du_doan: 'tai',
-            xac_suat: 55,
-            chi_tiet: {}
-        };
-    }
-}
-
-// ============================================================================
-// ============ ENSEMBLE LEARNING ============
-// ============================================================================
-
-function ensemblePrediction(data) {
-    if (data.length < CONFIG.MIN_DATA) {
-        // Dữ liệu ít -> ưu tiên Tài
-        return {
-            duDoan: 'tai',
-            tiLeTai: 58,
-            tiLeXiu: 42,
-            doTinCay: 55,
-            loaiCau: 'Chưa đủ dữ liệu',
-            mauCau: 'Mặc định',
-            cauPhatHien: { tong_cau: 0, danh_sach: [], cau_chinh: '' },
-            chiTietLuong: [],
-            threadResults: []
-        };
-    }
-
-    // Khởi tạo tất cả các luồng
-    const threads = [
-        new ThreadCauTruyenThong(data),
-        new ThreadCauNangCao(data),
-        new ThreadThongKe(data),
-        new ThreadMarkov(data),
-        new ThreadXuHuong(data),
-        new ThreadChuKy(data),
-        new ThreadPhanKy(data)
-    ];
-
-    // Chạy tất cả luồng
-    threadResults = threads.map(thread => thread.analyze());
-
-    // Tổng hợp có trọng số
-    let tongDiemTai = 0;
-    let tongDiemXiu = 0;
-    let tongTrongSo = 0;
-    const chiTietLuong = [];
-
-    for (const result of threadResults) {
-        if (!result.du_doan) continue;
-
-        const trongSo = result.trong_so;
-        const diemDieuChinh = (result.xac_suat - 50) * 2 * trongSo;
-
-        if (result.du_doan === 'tai') {
-            tongDiemTai += Math.abs(diemDieuChinh);
-        } else if (result.du_doan === 'xiu') {
-            tongDiemXiu += Math.abs(diemDieuChinh);
-        }
-
-        tongTrongSo += trongSo;
-        chiTietLuong.push({
-            luong: result.luong,
-            du_doan: result.du_doan,
-            xac_suat: result.xac_suat,
-            trong_so: trongSo,
-            cau_chinh: result.cau_chinh || '',
-            so_luong_cau: result.so_luong_cau || 0,
-            cac_cau: result.cac_cau || [],
-            chi_tiet: result.chi_tiet || {}
+    if (currentStreak >= 3) {
+        detected.push({
+            type: 'DÂY',
+            value: streakChar,
+            length: currentStreak,
+            desc: `Dây ${streakChar === 'B' ? 'Banker' : streakChar === 'P' ? 'Player' : 'Tie'} x${currentStreak}`
         });
     }
-
-    // Đảm bảo không 0
-    if (tongDiemTai === 0 && tongDiemXiu === 0) {
-        tongDiemTai = 55;
-        tongDiemXiu = 45;
-    }
-
-    // Tính tỉ lệ
-    const total = tongDiemTai + tongDiemXiu;
-    let tiLeTai = Math.round((tongDiemTai / total) * 100);
-    let tiLeXiu = Math.round((tongDiemXiu / total) * 100);
-
-    // Áp dụng hàm đảm bảo tỉ lệ (KHÔNG BAO GIỜ 50-50)
-    const damBao = damBaoTiLe(tiLeTai, tiLeXiu);
-    tiLeTai = damBao.tiLeTai;
-    tiLeXiu = damBao.tiLeXiu;
-
-    const duDoan = tiLeTai > tiLeXiu ? 'tai' : 'xiu';
-    const doTinCay = damBaoDoTinCay(Math.min(50 + Math.abs(tiLeTai - tiLeXiu) * 0.5, CONFIG.MAX_CONFIDENCE));
-
-    // Tìm cầu chính
-    let cauChinh = '';
-    let mauCau = '';
-    let danhSachCau = [];
     
-    for (const ct of chiTietLuong) {
-        if (ct.cau_chinh) {
-            if (!cauChinh) cauChinh = ct.cau_chinh;
-            mauCau = ct.cau_chinh;
-        }
-        if (ct.cac_cau && ct.cac_cau.length > 0) {
-            danhSachCau.push(...ct.cac_cau.map(c => c.ten));
+    // ===== 2. CẦU ĐAN XEN (ZIGZAG) =====
+    let zigzagCount = 0;
+    let zigzagStart = 0;
+    for (let i = 1; i < arr.length - 1; i++) {
+        if (arr[i] !== arr[i-1] && arr[i] !== arr[i+1]) {
+            zigzagCount++;
+            if (zigzagCount === 1) zigzagStart = i - 1;
         }
     }
-
-    danhSachCau = [...new Set(danhSachCau)];
-
-    // Nếu không có cầu -> gán mặc định
-    if (!cauChinh) cauChinh = 'Phân tích tổng hợp';
-    if (!mauCau) mauCau = 'Đa luồng';
-
+    if (zigzagCount >= 3) {
+        detected.push({
+            type: 'ĐAN XEN',
+            value: `${arr[zigzagStart]}↔${arr[zigzagStart+1]}`,
+            length: zigzagCount,
+            desc: `Đan xen ${zigzagCount} lần (${arr[zigzagStart]}↔${arr[zigzagStart+1]})`
+        });
+    }
+    
+    // ===== 3. CẦU 2-2 =====
+    let twoTwoCount = 0;
+    let twoTwoChar = '';
+    for (let i = 1; i < arr.length - 2; i += 2) {
+        if (arr[i] === arr[i-1] && arr[i+1] === arr[i+2]) {
+            twoTwoCount++;
+            twoTwoChar = arr[i];
+        }
+    }
+    if (twoTwoCount >= 2) {
+        detected.push({
+            type: '2-2',
+            value: twoTwoChar,
+            length: twoTwoCount,
+            desc: `Cầu 2-2 (${twoTwoChar === 'B' ? 'Banker' : 'Player'}) x${twoTwoCount}`
+        });
+    }
+    
+    // ===== 4. CẦU 3-3 =====
+    let threeThreeCount = 0;
+    let threeThreeChar = '';
+    for (let i = 2; i < arr.length - 3; i += 3) {
+        if (arr[i] === arr[i-1] && arr[i] === arr[i-2] &&
+            arr[i+1] === arr[i+2] && arr[i+1] === arr[i+3]) {
+            threeThreeCount++;
+            threeThreeChar = arr[i];
+        }
+    }
+    if (threeThreeCount >= 1) {
+        detected.push({
+            type: '3-3',
+            value: threeThreeChar,
+            length: threeThreeCount,
+            desc: `Cầu 3-3 (${threeThreeChar === 'B' ? 'Banker' : 'Player'})`
+        });
+    }
+    
+    // ===== 5. CẦU 1-2-3 =====
+    for (let i = 0; i < arr.length - 6; i++) {
+        if (arr[i] !== arr[i+1] &&
+            arr[i+1] === arr[i+2] &&
+            arr[i+2] !== arr[i+3] &&
+            arr[i+3] === arr[i+4] &&
+            arr[i+4] === arr[i+5]) {
+            detected.push({
+                type: '1-2-3',
+                value: `${arr[i]}${arr[i+1]}${arr[i+3]}`,
+                length: 6,
+                desc: `Cầu 1-2-3: ${arr[i]} → ${arr[i+1]}${arr[i+1]} → ${arr[i+3]}${arr[i+3]}${arr[i+3]}`
+            });
+            break;
+        }
+    }
+    
+    // ===== 6. CẦU 2-1-2 =====
+    for (let i = 0; i < arr.length - 5; i++) {
+        if (arr[i] === arr[i+1] &&
+            arr[i+1] !== arr[i+2] &&
+            arr[i+2] === arr[i+3] &&
+            arr[i+3] === arr[i+4]) {
+            detected.push({
+                type: '2-1-2',
+                value: `${arr[i]}${arr[i+2]}`,
+                length: 5,
+                desc: `Cầu 2-1-2: ${arr[i]}${arr[i]} → ${arr[i+2]} → ${arr[i+3]}${arr[i+3]}`
+            });
+            break;
+        }
+    }
+    
+    // ===== 7. CẦU 1-1-1-1 (HARMONIC) =====
+    let harmonicCount = 0;
+    for (let i = 0; i < arr.length - 3; i++) {
+        if (arr[i] !== arr[i+1] && arr[i+1] !== arr[i+2] && arr[i+2] !== arr[i+3]) {
+            harmonicCount++;
+        }
+    }
+    if (harmonicCount >= 3) {
+        detected.push({
+            type: 'HARMONIC',
+            value: arr.slice(-4).join(''),
+            length: harmonicCount,
+            desc: `Harmonic ${harmonicCount} lần: ${arr.slice(-4).join('')}`
+        });
+    }
+    
+    // ===== 8. CẦU 4-4 =====
+    let fourFourCount = 0;
+    let fourFourChar = '';
+    for (let i = 3; i < arr.length - 4; i += 4) {
+        if (arr[i] === arr[i-1] && arr[i] === arr[i-2] && arr[i] === arr[i-3] &&
+            arr[i+1] === arr[i+2] && arr[i+1] === arr[i+3] && arr[i+1] === arr[i+4]) {
+            fourFourCount++;
+            fourFourChar = arr[i];
+        }
+    }
+    if (fourFourCount >= 1) {
+        detected.push({
+            type: '4-4',
+            value: fourFourChar,
+            length: fourFourCount,
+            desc: `Cầu 4-4 (${fourFourChar === 'B' ? 'Banker' : 'Player'})`
+        });
+    }
+    
+    // ===== 9. CẦU FIBONACCI =====
+    const fib = [1, 1, 2, 3, 5, 8];
+    for (let i = 0; i < fib.length - 1; i++) {
+        const pos1 = arr.length - fib[i] - 1;
+        const pos2 = arr.length - fib[i+1] - 1;
+        if (pos1 >= 0 && pos2 >= 0 && arr[pos1] === arr[pos2]) {
+            detected.push({
+                type: 'FIBONACCI',
+                value: arr[pos1],
+                length: fib[i+1],
+                desc: `Fibonacci: ${arr[pos1]} tại vị trí ${fib[i]} và ${fib[i+1]}`
+            });
+            break;
+        }
+    }
+    
+    // ===== 10. CẦU MẪU (PATTERN) =====
+    const patterns = {};
+    for (let len = 2; len <= 5; len++) {
+        for (let i = 0; i < arr.length - len; i++) {
+            const pattern = arr.slice(i, i + len).join('');
+            if (!patterns[pattern]) patterns[pattern] = 0;
+            patterns[pattern]++;
+        }
+    }
+    let maxPattern = '';
+    let maxCount = 0;
+    for (const [p, count] of Object.entries(patterns)) {
+        if (count > maxCount && count >= 2) {
+            maxCount = count;
+            maxPattern = p;
+        }
+    }
+    if (maxPattern) {
+        detected.push({
+            type: 'MẪU',
+            value: maxPattern,
+            length: maxCount,
+            desc: `Mẫu ${maxPattern} lặp lại ${maxCount} lần`
+        });
+    }
+    
+    // ===== 11. CẦU XEN KẼ (ALTERNATING) =====
+    let altCount = 0;
+    let altChar = arr[0];
+    for (let i = 1; i < arr.length; i++) {
+        if (arr[i] !== arr[i-1]) altCount++;
+        else break;
+    }
+    if (altCount >= 4) {
+        detected.push({
+            type: 'XEN KẼ',
+            value: altChar,
+            length: altCount,
+            desc: `Xen kẽ ${altCount} lần bắt đầu từ ${altChar === 'B' ? 'Banker' : 'Player'}`
+        });
+    }
+    
+    // ===== 12. CẦU ĐỐI XỨNG =====
+    for (let i = 0; i < Math.floor(arr.length / 2); i++) {
+        if (arr[i] === arr[arr.length - 1 - i]) {
+            detected.push({
+                type: 'ĐỐI XỨNG',
+                value: arr[i],
+                length: i + 1,
+                desc: `Đối xứng: ${arr.slice(0, i+1).join('')} ... ${arr.slice(-i-1).join('')}`
+            });
+            break;
+        }
+    }
+    
+    // ===== 13. CẦU LẶP =====
+    for (let len = 1; len <= 3; len++) {
+        const last = arr.slice(-len).join('');
+        let count = 0;
+        for (let i = 0; i < arr.length - len; i++) {
+            if (arr.slice(i, i + len).join('') === last) count++;
+        }
+        if (count >= 2) {
+            detected.push({
+                type: 'LẶP',
+                value: last,
+                length: count,
+                desc: `Lặp ${last} ${count} lần`
+            });
+            break;
+        }
+    }
+    
+    // ===== 14. CẦU HÒA (TIE PATTERN) =====
+    const tiePositions = [];
+    for (let i = 0; i < arr.length; i++) {
+        if (arr[i] === 'T') tiePositions.push(i);
+    }
+    if (tiePositions.length >= 2) {
+        const gaps = [];
+        for (let i = 1; i < tiePositions.length; i++) {
+            gaps.push(tiePositions[i] - tiePositions[i-1]);
+        }
+        if (gaps.every(g => g === gaps[0])) {
+            detected.push({
+                type: 'TIE',
+                value: 'T',
+                length: tiePositions.length,
+                desc: `Tie xuất hiện cách đều ${gaps[0]} lần`
+            });
+        }
+    }
+    
+    // ===== 15. CẦU MARKOV =====
+    const markov = { 'B': { 'B': 0, 'P': 0, 'T': 0 }, 'P': { 'B': 0, 'P': 0, 'T': 0 }, 'T': { 'B': 0, 'P': 0, 'T': 0 } };
+    for (let i = 0; i < arr.length - 1; i++) {
+        if (markov[arr[i]] && markov[arr[i]][arr[i+1]] !== undefined) {
+            markov[arr[i]][arr[i+1]]++;
+        }
+    }
+    const lastChar = arr[arr.length - 1];
+    const trans = markov[lastChar];
+    if (trans) {
+        const total = trans.B + trans.P + trans.T;
+        if (total > 0) {
+            let maxTrans = 0;
+            let maxChar = 'B';
+            for (const [key, val] of Object.entries(trans)) {
+                if (val > maxTrans) {
+                    maxTrans = val;
+                    maxChar = key;
+                }
+            }
+            if (maxTrans / total > 0.4) {
+                detected.push({
+                    type: 'MARKOV',
+                    value: maxChar,
+                    length: maxTrans,
+                    desc: `Markov: ${lastChar === 'B' ? 'Banker' : 'Player'} → ${maxChar === 'B' ? 'Banker' : 'Player'} (${Math.round(maxTrans/total*100)}%)`
+                });
+            }
+        }
+    }
+    
+    // ===== 16-25. CẦU NÂNG CAO =====
+    
+    // 16. Cầu xu hướng
+    const last10 = arr.slice(-10);
+    const bCount = last10.filter(c => c === 'B').length;
+    const pCount = last10.filter(c => c === 'P').length;
+    if (Math.abs(bCount - pCount) >= 3) {
+        detected.push({
+            type: 'XU HƯỚNG',
+            value: bCount > pCount ? 'B' : 'P',
+            length: Math.abs(bCount - pCount),
+            desc: `Xu hướng ${bCount > pCount ? 'Banker' : 'Player'} (${Math.abs(bCount-pCount)}/${last10.length})`
+        });
+    }
+    
+    // 17. Cầu áp đảo
+    const total = arr.length;
+    if (bCount / total > 0.6) {
+        detected.push({
+            type: 'ÁP ĐẢO',
+            value: 'B',
+            length: Math.round(bCount / total * 100),
+            desc: `Banker áp đảo ${Math.round(bCount/total*100)}%`
+        });
+    }
+    if (pCount / total > 0.6) {
+        detected.push({
+            type: 'ÁP ĐẢO',
+            value: 'P',
+            length: Math.round(pCount / total * 100),
+            desc: `Player áp đảo ${Math.round(pCount/total*100)}%`
+        });
+    }
+    
+    // 18. Cầu đột biến
+    const recent = arr.slice(-3);
+    if (recent.every(c => c === recent[0])) {
+        detected.push({
+            type: 'ĐỘT BIẾN',
+            value: recent[0],
+            length: 3,
+            desc: `Đột biến ${recent[0] === 'B' ? 'Banker' : 'Player'} x${recent.length}`
+        });
+    }
+    
+    // 19. Cầu hồi phục
+    if (arr.length > 10) {
+        const first5 = arr.slice(0, 5);
+        const last5 = arr.slice(-5);
+        if (first5.every(c => c === 'B') && last5.every(c => c === 'P')) {
+            detected.push({
+                type: 'HỒI PHỤC',
+                value: 'B→P',
+                length: 5,
+                desc: 'Hồi phục từ Banker sang Player'
+            });
+        }
+        if (first5.every(c => c === 'P') && last5.every(c => c === 'B')) {
+            detected.push({
+                type: 'HỒI PHỤC',
+                value: 'P→B',
+                length: 5,
+                desc: 'Hồi phục từ Player sang Banker'
+            });
+        }
+    }
+    
+    // 20. Cầu song song
+    if (arr.length > 8) {
+        const half = Math.floor(arr.length / 2);
+        const firstHalf = arr.slice(0, half);
+        const secondHalf = arr.slice(half);
+        let matchCount = 0;
+        for (let i = 0; i < Math.min(firstHalf.length, secondHalf.length); i++) {
+            if (firstHalf[i] === secondHalf[i]) matchCount++;
+        }
+        if (matchCount >= 3) {
+            detected.push({
+                type: 'SONG SONG',
+                value: secondHalf.slice(0, matchCount).join(''),
+                length: matchCount,
+                desc: `Song song ${matchCount} lần`
+            });
+        }
+    }
+    
+    // ===== TỔNG HỢP =====
     return {
-        duDoan,
-        tiLeTai,
-        tiLeXiu,
-        doTinCay,
-        loaiCau: cauChinh,
-        mauCau: mauCau,
-        cauPhatHien: {
-            tong_cau: danhSachCau.length,
-            danh_sach: danhSachCau,
-            cau_chinh: cauChinh
-        },
-        chiTietLuong,
-        threadResults
+        patterns: detected,
+        count: detected.length,
+        summary: detected.map(d => d.desc).join(' | ')
     };
 }
 
-// ============================================================================
-// ============ HÀM DỰ ĐOÁN CHÍNH ============
-// ============================================================================
+// ============================================================
+// THUẬT TOÁN DỰ ĐOÁN ĐA LUỒNG VIP
+// ============================================================
 
-function duDoanTongHop(data) {
-    return ensemblePrediction(data);
-}
-
-// ============================================================================
-// ============ CẬP NHẬT THỐNG KÊ ============
-// ============================================================================
-
-function capNhatThongKe(ketQuaThucTe, duDoan, loaiCau) {
-    stats.total++;
-    
-    if (duDoan === ketQuaThucTe) {
-        stats.correct++;
-        if (stats.currentStreak >= 0) {
-            stats.currentStreak++;
-        } else {
-            stats.currentStreak = 1;
-        }
-        stats.streakType = 'correct';
-    } else {
-        stats.wrong++;
-        if (stats.currentStreak <= 0) {
-            stats.currentStreak--;
-        } else {
-            stats.currentStreak = -1;
-        }
-        stats.streakType = 'wrong';
-    }
-    
-    if (Math.abs(stats.currentStreak) > stats.maxStreak) {
-        stats.maxStreak = Math.abs(stats.currentStreak);
-    }
-
-    // Thống kê theo loại cầu
-    if (loaiCau && loaiCau !== 'Không xác định' && loaiCau !== 'Chưa đủ dữ liệu') {
-        if (!stats.byCauType[loaiCau]) {
-            stats.byCauType[loaiCau] = { total: 0, correct: 0 };
-        }
-        stats.byCauType[loaiCau].total++;
-        if (duDoan === ketQuaThucTe) {
-            stats.byCauType[loaiCau].correct++;
-        }
-    }
-
-    // Độ chính xác trượt
-    const recentHistory = history.slice(-50);
-    const recentCorrect = recentHistory.filter((val, idx) => {
-        const predIdx = predictionHistory.length - recentHistory.length + idx;
-        return predIdx >= 0 && predictionHistory[predIdx] === val;
-    }).length;
-    
-    stats.rollingAccuracy.push({
-        thoi_diem: new Date().toISOString(),
-        do_chinh_xac: recentHistory.length > 0 ? Math.round((recentCorrect / recentHistory.length) * 100) : 0
-    });
-    
-    if (stats.rollingAccuracy.length > 100) {
-        stats.rollingAccuracy = stats.rollingAccuracy.slice(-100);
-    }
-}
-
-// ============================================================================
-// ============ XỬ LÝ DỰ ĐOÁN CHÍNH ============
-// ============================================================================
-
-async function xuLyDuDoan() {
-    const data = await layKetQua();
-    if (!data) return;
-
-    const d1 = data.xuc_xac_1 || 0;
-    const d2 = data.xuc_xac_2 || 0;
-    const d3 = data.xuc_xac_3 || 0;
-    const tong = d1 + d2 + d3;
-    const ketQua = data.ket_qua || (tong >= 11 ? 'tài' : 'xỉu');
-    const phien = data.phien || 0;
-    const ketQuaChuan = ketQua.toLowerCase().replace('ài', 'ai').replace('ỉu', 'iu');
-
-    if (phien > (currentData.Phien || 0)) {
-        if (ketQuaChuan) {
-            history.push(ketQuaChuan);
-            historyChiTiet.push({ phien, d1, d2, d3, tong, ketQua: ketQuaChuan });
-            
-            if (history.length > CONFIG.MAX_HISTORY) {
-                history.shift();
-                historyChiTiet.shift();
-            }
-
-            if (currentData.Du_doan && currentData.Phien) {
-                predictionHistory.push(currentData.Du_doan);
-                if (predictionHistory.length > CONFIG.MAX_HISTORY) predictionHistory.shift();
-                capNhatThongKe(ketQuaChuan, currentData.Du_doan, currentData.Loai_cau);
-            }
-        }
-
-        const prediction = duDoanTongHop(history);
-        const tiLe = stats.total > 0 ? (stats.correct / stats.total * 100).toFixed(1) + '%' : '0%';
-
-        currentData = {
-            Phien: phien,
-            Xuc_xac_1: d1,
-            Xuc_xac_2: d2,
-            Xuc_xac_3: d3,
-            Tong: tong,
-            Ket_qua: ketQuaChuan,
-            Phien_hien_tai: phien + 1,
-            Du_doan: prediction.duDoan,
-            Loai_cau: prediction.loaiCau,
-            Mau_cau_phat_hien: prediction.mauCau,
-            Ti_le_Tai: prediction.tiLeTai + '%',
-            Ti_le_Xiu: prediction.tiLeXiu + '%',
-            Do_tin_cay: prediction.doTinCay + '%',
-            Trang_thai: 'Đã dự đoán (Ensemble)',
-            Ket_qua_du_doan: stats.total > 0 ? (stats.correct > stats.wrong ? '✅' : '❌') : '',
-            Thong_ke: {
-                tong: stats.total,
-                dung: stats.correct,
-                sai: stats.wrong,
-                ti_le: tiLe,
-                streak_hien_tai: stats.currentStreak,
-                streak_cao_nhat: stats.maxStreak
-            },
-            Nhan_dien_cau: {
-                ten_cau: prediction.loaiCau,
-                do_dai: history.length,
-                vi_tri_hien_tai: history.length,
-                du_doan_tiep: prediction.duDoan,
-                xac_suat: prediction.doTinCay + '%',
-                danh_sach_cau: prediction.cauPhatHien.danh_sach || [],
-                so_luong_cau: prediction.cauPhatHien.tong_cau || 0
-            },
-            Phan_tich_chi_tiet: {
-                tong_phan_tich: history.length,
-                cau_phat_hien: prediction.cauPhatHien,
-                ty_le_tai: prediction.tiLeTai,
-                ty_le_xiu: prediction.tiLeXiu,
-                do_tin_cay: prediction.doTinCay,
-                phan_tich_da_luong: prediction.chiTietLuong || [],
-                ensemble_score: {
-                    ti_le_tai: prediction.tiLeTai,
-                    ti_le_xiu: prediction.tiLeXiu,
-                    do_tin_cay: prediction.doTinCay
-                },
-                chi_bao_ky_thuat: {
-                    tong_luong: prediction.chiTietLuong ? prediction.chiTietLuong.length : 0,
-                    luong_dong_thuan: prediction.chiTietLuong ? 
-                        prediction.chiTietLuong.filter(l => l.du_doan === prediction.duDoan).length : 0
-                }
-            },
-            id: '@tranhoang2286'
+function predictBaccaratVIP(history) {
+    if (!history || history.length < 3) {
+        return {
+            prediction: 'Player',
+            banker: 48,
+            player: 48,
+            tie: 4,
+            patterns: [],
+            confidence: 50,
+            trend: 'Chưa đủ dữ liệu'
         };
-
-        // Log
-        console.log('\n' + '═'.repeat(70));
-        console.log(`📊 PHIÊN: ${phien} | 🎲 [${d1},${d2},${d3}] = ${tong}`);
-        console.log(`✅ KQ: ${ketQuaChuan.toUpperCase()} | 🔮 DĐ: ${prediction.duDoan.toUpperCase()}`);
-        console.log(`📈 Tài ${prediction.tiLeTai}% | Xỉu ${prediction.tiLeXiu}% | 🎯 TC: ${prediction.doTinCay}%`);
-        console.log(`📐 Cầu: ${prediction.loaiCau} | Mẫu: ${prediction.mauCau}`);
-        console.log(`📊 TK: ${stats.correct}/${stats.total} | Streak: ${stats.currentStreak}`);
-        console.log('═'.repeat(70));
-
-        cauHistory.push({
-            phien, loai_cau: prediction.loaiCau, mau_cau: prediction.mauCau,
-            du_doan: prediction.duDoan, ket_qua: ketQuaChuan,
-            chinh_xac: prediction.duDoan === ketQuaChuan
-        });
-        if (cauHistory.length > 200) cauHistory.shift();
     }
+
+    const arr = history.split('');
+    const total = arr.length;
+    const counts = { B: 0, P: 0, T: 0 };
+    for (const c of arr) {
+        if (counts[c] !== undefined) counts[c]++;
+    }
+
+    // ===== LUỒNG 1: TẦN SUẤT =====
+    const pPercent = (counts.P / total) * 100;
+    const bPercent = (counts.B / total) * 100;
+    const tPercent = (counts.T / total) * 100;
+
+    // ===== LUỒNG 2: STREAK =====
+    let maxStreak = 1;
+    let streakChar = arr[0];
+    let currentStreak = 1;
+    for (let i = 1; i < arr.length; i++) {
+        if (arr[i] === arr[i-1]) {
+            currentStreak++;
+            if (currentStreak > maxStreak) {
+                maxStreak = currentStreak;
+                streakChar = arr[i];
+            }
+        } else {
+            currentStreak = 1;
+        }
+    }
+
+    // ===== LUỒNG 3: ZIGZAG =====
+    let zigzagCount = 0;
+    for (let i = 1; i < arr.length - 1; i++) {
+        if (arr[i] !== arr[i-1] && arr[i] !== arr[i+1]) {
+            zigzagCount++;
+        }
+    }
+
+    // ===== LUỒNG 4: PATTERN 2-2 =====
+    let pattern22 = 0;
+    for (let i = 1; i < Math.min(10, arr.length - 1); i += 2) {
+        if (arr[arr.length - i] === arr[arr.length - i - 1]) {
+            pattern22++;
+        }
+    }
+
+    // ===== LUỒNG 5: PATTERN 3-3 =====
+    let pattern33 = 0;
+    for (let i = 2; i < Math.min(12, arr.length - 1); i += 3) {
+        if (arr[arr.length - i] === arr[arr.length - i - 1] &&
+            arr[arr.length - i] === arr[arr.length - i - 2]) {
+            pattern33++;
+        }
+    }
+
+    // ===== LUỒNG 6: MARKOV =====
+    const markov = { 'B': { 'B': 0, 'P': 0, 'T': 0 }, 'P': { 'B': 0, 'P': 0, 'T': 0 }, 'T': { 'B': 0, 'P': 0, 'T': 0 } };
+    for (let i = 0; i < arr.length - 1; i++) {
+        if (markov[arr[i]] && markov[arr[i]][arr[i+1]] !== undefined) {
+            markov[arr[i]][arr[i+1]]++;
+        }
+    }
+    const lastChar = arr[arr.length - 1];
+    const trans = markov[lastChar];
+    let markovPred = 'B';
+    let markovProb = 0;
+    if (trans) {
+        const totalTrans = trans.B + trans.P + trans.T;
+        if (totalTrans > 0) {
+            let maxProb = 0;
+            for (const [key, val] of Object.entries(trans)) {
+                if (val / totalTrans > maxProb) {
+                    maxProb = val / totalTrans;
+                    markovPred = key;
+                    markovProb = maxProb;
+                }
+            }
+        }
+    }
+
+    // ===== LUỒNG 7: MOMENTUM =====
+    const values = arr.map(c => c === 'B' ? 1 : c === 'P' ? -1 : 0);
+    let momentum = 0;
+    for (let i = 1; i < Math.min(values.length, 10); i++) {
+        momentum += values[i] - values[i - 1];
+    }
+
+    // ===== LUỒNG 8: ENTROPY =====
+    let entropy = 0;
+    for (const c of ['B', 'P', 'T']) {
+        const prob = counts[c] / total;
+        if (prob > 0) entropy -= prob * Math.log2(prob);
+    }
+    const maxEntropy = Math.log2(3);
+    const predictability = 1 - (entropy / maxEntropy);
+
+    // ===== LUỒNG 9: GAP ANALYSIS =====
+    const gaps = { 'B': [], 'P': [], 'T': [] };
+    const lastPos = { 'B': -1, 'P': -1, 'T': -1 };
+    for (let i = 0; i < arr.length; i++) {
+        const char = arr[i];
+        if (lastPos[char] !== -1) {
+            gaps[char].push(i - lastPos[char] - 1);
+        }
+        lastPos[char] = i;
+    }
+    const avgGaps = {};
+    for (const key of ['B', 'P', 'T']) {
+        if (gaps[key].length > 0) {
+            avgGaps[key] = gaps[key].reduce((a, b) => a + b, 0) / gaps[key].length;
+        } else {
+            avgGaps[key] = 2;
+        }
+    }
+    const currentGap = {};
+    for (const key of ['B', 'P', 'T']) {
+        currentGap[key] = arr.length - 1 - lastPos[key];
+    }
+    let gapPred = 'B';
+    let gapScore = 0;
+    for (const key of ['B', 'P', 'T']) {
+        const score = currentGap[key] / (avgGaps[key] || 1);
+        if (score > gapScore) {
+            gapScore = score;
+            gapPred = key;
+        }
+    }
+
+    // ===== TỔNG HỢP ĐIỂM =====
+    let bankerScore = 0;
+    let playerScore = 0;
+    let tieScore = 0;
+
+    // Trọng số các luồng
+    const weights = {
+        frequency: 0.18,
+        streak: 0.15,
+        zigzag: 0.10,
+        pattern22: 0.10,
+        pattern33: 0.08,
+        markov: 0.12,
+        momentum: 0.10,
+        entropy: 0.07,
+        gap: 0.10
+    };
+
+    // Tần suất
+    bankerScore += bPercent * weights.frequency;
+    playerScore += pPercent * weights.frequency;
+    tieScore += tPercent * weights.frequency;
+
+    // Streak
+    if (maxStreak >= 4) {
+        if (streakChar === 'B') bankerScore += 100 * weights.streak;
+        else if (streakChar === 'P') playerScore += 100 * weights.streak;
+        else tieScore += 100 * weights.streak;
+    } else {
+        bankerScore += 50 * weights.streak;
+        playerScore += 50 * weights.streak;
+    }
+
+    // Zigzag
+    if (zigzagCount >= 4) {
+        const last = arr[arr.length - 1];
+        if (last === 'P') bankerScore += 100 * weights.zigzag;
+        else if (last === 'B') playerScore += 100 * weights.zigzag;
+        else tieScore += 100 * weights.zigzag;
+    } else {
+        bankerScore += 50 * weights.zigzag;
+        playerScore += 50 * weights.zigzag;
+    }
+
+    // Pattern 2-2
+    if (pattern22 >= 2) {
+        const last = arr[arr.length - 1];
+        if (last === 'P') bankerScore += 100 * weights.pattern22;
+        else if (last === 'B') playerScore += 100 * weights.pattern22;
+        else tieScore += 100 * weights.pattern22;
+    }
+
+    // Pattern 3-3
+    if (pattern33 >= 1) {
+        const last = arr[arr.length - 1];
+        if (last === 'P') bankerScore += 100 * weights.pattern33;
+        else if (last === 'B') playerScore += 100 * weights.pattern33;
+        else tieScore += 100 * weights.pattern33;
+    }
+
+    // Markov
+    if (markovProb > 0.4) {
+        if (markovPred === 'B') bankerScore += 100 * weights.markov;
+        else if (markovPred === 'P') playerScore += 100 * weights.markov;
+        else tieScore += 100 * weights.markov;
+    }
+
+    // Momentum
+    if (Math.abs(momentum) > 1.5) {
+        if (momentum > 0) bankerScore += 100 * weights.momentum;
+        else playerScore += 100 * weights.momentum;
+    }
+
+    // Entropy
+    if (predictability > 0.6) {
+        const freqPred = bPercent > pPercent ? 'B' : 'P';
+        if (freqPred === 'B') bankerScore += 100 * weights.entropy;
+        else playerScore += 100 * weights.entropy;
+    } else if (predictability < 0.3) {
+        tieScore += 100 * weights.entropy;
+    }
+
+    // Gap
+    if (gapScore > 1.2) {
+        if (gapPred === 'B') bankerScore += 100 * weights.gap;
+        else if (gapPred === 'P') playerScore += 100 * weights.gap;
+        else tieScore += 100 * weights.gap;
+    }
+
+    // ===== CHUẨN HÓA =====
+    const totalScore = bankerScore + playerScore + tieScore || 1;
+    let banker = (bankerScore / totalScore) * 100;
+    let player = (playerScore / totalScore) * 100;
+    let tie = (tieScore / totalScore) * 100;
+
+    // Điều chỉnh theo xác suất thực tế Baccarat
+    banker = banker * 0.7 + 13.76;
+    player = player * 0.7 + 13.39;
+    tie = tie * 0.7 + 2.86;
+
+    const sum = banker + player + tie;
+    banker = (banker / sum) * 100;
+    player = (player / sum) * 100;
+    tie = (tie / sum) * 100;
+
+    // ===== XÁC ĐỊNH DỰ ĐOÁN =====
+    let prediction = 'Player';
+    let maxRate = Math.max(banker, player, tie);
+    if (maxRate === banker) prediction = 'Banker';
+    else if (maxRate === player) prediction = 'Player';
+    else prediction = 'Tie';
+
+    // ===== ĐỘ TIN CẬY =====
+    const confidence = Math.min(Math.max(maxRate - 10, 25), 85);
+
+    // ===== PHÂN TÍCH CẦU =====
+    const patternResult = detectAllPatterns(history);
+
+    // ===== XU HƯỚNG =====
+    let trend = 'Cầu đan xen';
+    if (bPercent > 55) trend = `Banker áp đảo (${Math.round(bPercent)}%)`;
+    else if (pPercent > 55) trend = `Player áp đảo (${Math.round(pPercent)}%)`;
+    else if (maxStreak >= 4) trend = `Dây ${streakChar === 'B' ? 'Banker' : 'Player'} x${maxStreak}`;
+    else if (zigzagCount >= 4) trend = `Đan xen ${zigzagCount} lần`;
+    else if (pattern22 >= 2) trend = `Cầu 2-2 (${pattern22} lần)`;
+    else if (pattern33 >= 1) trend = `Cầu 3-3`;
+
+    // Làm tròn
+    let b = Math.round(banker);
+    let p = Math.round(player);
+    let t = Math.round(tie);
+
+    // Đảm bảo không = 50%
+    if (b === 50) b = 51;
+    if (p === 50) p = 49;
+    if (t === 50) t = 5;
+
+    // Đảm bảo tổng = 100%
+    const totalRates = b + p + t;
+    if (totalRates !== 100) {
+        const diff = 100 - totalRates;
+        if (b > p && b > t) b += diff;
+        else if (p > b && p > t) p += diff;
+        else t += diff;
+    }
+
+    return {
+        prediction: prediction,
+        banker: Math.max(b, 3),
+        player: Math.max(p, 3),
+        tie: Math.max(t, 2),
+        patterns: patternResult.patterns,
+        patternSummary: patternResult.summary,
+        confidence: Math.round(confidence),
+        trend: trend,
+        stats: {
+            B: Math.round(bPercent),
+            P: Math.round(pPercent),
+            T: Math.round(tPercent),
+            maxStreak: maxStreak,
+            zigzag: zigzagCount,
+            pattern22: pattern22,
+            pattern33: pattern33,
+            momentum: Math.round(momentum * 10) / 10,
+            entropy: Math.round(entropy * 10) / 10,
+            predictability: Math.round(predictability * 100)
+        }
+    };
 }
 
-// ============================================================================
-// ============ API ============
-// ============================================================================
+// ======================
+// KHỞI TẠO API SERVER
+// ======================
+const app = express();
 
-app.set('etag', false);
 app.use((req, res, next) => {
-    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.header('Pragma', 'no-cache');
-    res.header('Expires', '0');
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Headers', '*');
     next();
 });
 
-app.get('/', (req, res) => res.json(currentData));
-
-app.get('/api/tx', async (req, res) => {
-    const fresh = await layKetQua();
-    if (fresh && fresh.phien > currentData.Phien) await xuLyDuDoan();
-    res.json(currentData);
-});
-
-app.get('/api/predict', (req, res) => {
-    res.json({ success: true, data: currentData, timestamp: new Date().toISOString() });
-});
-
-app.get('/api/stats', (req, res) => {
-    res.json({
-        success: true,
-        stats: currentData.Thong_ke,
-        by_cau_type: stats.byCauType,
-        rolling_accuracy: stats.rollingAccuracy.slice(-20)
-    });
-});
-
-app.get('/api/cau', (req, res) => {
-    const result = duDoanTongHop(history);
-    res.json({
-        success: true,
-        cau: result.cauPhatHien,
-        loai_cau: result.loaiCau,
-        du_doan: result.duDoan,
-        ti_le: { tai: result.tiLeTai, xiu: result.tiLeXiu },
-        do_tin_cay: result.doTinCay
-    });
-});
-
-app.get('/api/threads', (req, res) => {
-    res.json({
-        success: true,
-        thread_results: threadResults,
-        ensemble: currentData.Phan_tich_chi_tiet.ensemble_score || {}
-    });
-});
-
-app.get('/health', (req, res) => {
-    res.json({ status: 'OK', phien: currentData.Phien, total: history.length });
-});
-
-// ============================================================================
-// ============ KHỞI ĐỘNG ============
-// ============================================================================
-
-app.listen(PORT, async () => {
-    console.log('\n' + '═'.repeat(70));
-    console.log('🚀 MAX789 PRO V12 - KHÔNG BAO GIỜ 50%');
-    console.log('═'.repeat(70));
-    console.log(`🔗 Server: http://localhost:${PORT}`);
-    console.log(`👤 Creator: @tranhoang2286`);
-    console.log(`🎯 Tỉ lệ tối thiểu: ${CONFIG.MIN_CONFIDENCE}% - Luôn > 50%`);
-    console.log(`🧠 7 Luồng Ensemble Learning`);
-    console.log(`🛡️ Bảo đảm: KHÔNG Random - KHÔNG 50-50`);
-    console.log('═'.repeat(70) + '\n');
+// ===== API LẤY TẤT CẢ BÀN (CÓ PHIÊN) =====
+app.get('/api/baccarat', (req, res) => {
+    const dataWithSession = baccaratData.map(item => ({
+        ...item,
+        session: sessionData[item.table] || 0
+    }));
     
-    await xuLyDuDoan();
-    setInterval(xuLyDuDoan, CONFIG.CHECK_INTERVAL);
+    res.json({
+        success: true,
+        data: dataWithSession,
+        lastUpdate: lastUpdate,
+        total: baccaratData.length
+    });
 });
 
-process.on('uncaughtException', (error) => {
-    console.error('🔥 Lỗi:', error);
+// ===== API LẤY 1 BÀN CỤ THỂ =====
+app.get('/api/baccarat/:table', (req, res) => {
+    const tableName = req.params.table;
+    const found = baccaratData.find(item => item.table === tableName);
+    
+    if (found) {
+        res.json({ 
+            success: true, 
+            data: {
+                ...found,
+                session: sessionData[tableName] || 0
+            }
+        });
+    } else {
+        res.json({ success: false, message: 'Không tìm thấy bàn ' + tableName });
+    }
 });
 
-Math.log2 = Math.log2 || function(x) { return Math.log(x) / Math.LN2; };
+// ===== API DỰ ĐOÁN VIP 1 BÀN =====
+app.get('/api/predict/:table', (req, res) => {
+    const tableName = req.params.table;
+    const found = baccaratData.find(item => item.table === tableName);
+    
+    if (!found) {
+        return res.json({ 
+            success: false, 
+            message: 'Không tìm thấy bàn ' + tableName 
+        });
+    }
+
+    const result = predictBaccaratVIP(found.result);
+    const session = sessionData[tableName] || 0;
+    
+    // Lấy 5 pattern gần nhất
+    const recentPatterns = patternHistory[tableName] ? patternHistory[tableName].slice(-5) : [];
+
+    res.json({
+        success: true,
+        table: `Bàn ${tableName}`,
+        phiên: session,
+        dự_đoán: result.prediction,
+        banker: `${result.banker}%`,
+        player: `${result.player}%`,
+        tie: `${result.tie}%`,
+        tỉ_lệ: `${Math.max(result.banker, result.player, result.tie)}%`,
+        cầu: result.trend,
+        chi_tiết_cầu: result.patternSummary || 'Không có cầu rõ ràng',
+        danh_sách_cầu: result.patterns.map(p => p.desc),
+        số_lượng_cầu: result.patterns.length,
+        confidence: `${result.confidence}%`,
+        stats: result.stats,
+        lịch_sử_cầu: recentPatterns,
+        data_length: found.result.length,
+        timestamp: new Date().toISOString(),
+        id: '@tranhoang2286'
+    });
+});
+
+// ===== API DỰ ĐOÁN VIP TẤT CẢ BÀN =====
+app.get('/api/predict/all', (req, res) => {
+    const results = [];
+    
+    for (const item of baccaratData) {
+        const result = predictBaccaratVIP(item.result);
+        const session = sessionData[item.table] || 0;
+        
+        results.push({
+            table: `Bàn ${item.table}`,
+            phiên: session,
+            dự_đoán: result.prediction,
+            banker: `${result.banker}%`,
+            player: `${result.player}%`,
+            tie: `${result.tie}%`,
+            tỉ_lệ: `${Math.max(result.banker, result.player, result.tie)}%`,
+            cầu: result.trend,
+            số_lượng_cầu: result.patterns.length,
+            confidence: `${result.confidence}%`,
+            data_length: item.result.length
+        });
+    }
+    
+    res.json({
+        success: true,
+        data: results,
+        total: results.length,
+        timestamp: new Date().toISOString(),
+        id: '@tranhoang2286'
+    });
+});
+
+// ===== API NHẬN DIỆN CẦU CHI TIẾT =====
+app.get('/api/patterns/:table', (req, res) => {
+    const tableName = req.params.table;
+    const found = baccaratData.find(item => item.table === tableName);
+    
+    if (!found) {
+        return res.json({ 
+            success: false, 
+            message: 'Không tìm thấy bàn ' + tableName 
+        });
+    }
+
+    const patterns = detectAllPatterns(found.result);
+    
+    res.json({
+        success: true,
+        table: `Bàn ${tableName}`,
+        total_patterns: patterns.count,
+        patterns: patterns.patterns,
+        summary: patterns.summary,
+        history: patternHistory[tableName] || [],
+        id: '@tranhoang2286'
+    });
+});
+
+// ===== API LẤY KẾT QUẢ MỚI NHẤT =====
+app.get('/api/latest', (req, res) => {
+    const latest = [...baccaratData].sort((a, b) => {
+        const numA = parseInt(a.table) || 0;
+        const numB = parseInt(b.table) || 0;
+        return numB - numA;
+    });
+    
+    const dataWithSession = latest.map(item => ({
+        ...item,
+        session: sessionData[item.table] || 0
+    }));
+    
+    res.json({ 
+        success: true, 
+        data: dataWithSession.slice(0, 10), 
+        lastUpdate: lastUpdate 
+    });
+});
+
+// ===== API RESET PHIÊN =====
+app.get('/api/reset/:table', (req, res) => {
+    const tableName = req.params.table;
+    if (sessionData[tableName] !== undefined) {
+        sessionData[tableName] = 0;
+        patternHistory[tableName] = [];
+        res.json({
+            success: true,
+            message: `Đã reset phiên bàn ${tableName}`,
+            id: '@tranhoang2286'
+        });
+    } else {
+        res.json({
+            success: false,
+            message: `Không tìm thấy bàn ${tableName}`
+        });
+    }
+});
+
+// ===== API HEALTH CHECK =====
+app.get('/api/health', (req, res) => {
+    res.json({
+        status: 'OK',
+        timestamp: new Date().toISOString(),
+        tables: baccaratData.length,
+        sessions: sessionData,
+        id: '@tranhoang2286'
+    });
+});
+
+// ===== ROOT =====
+app.get('/', (req, res) => {
+    res.json({
+        name: 'BACCARAT VIP PREDICTION - SIÊU CẦU',
+        version: '3.0.0',
+        author: '@tranhoang2286',
+        features: {
+            phiên: 'Tự động tăng khi có kết quả mới cho từng bàn',
+            đa_luồng: '9 luồng phân tích song song',
+            nhận_diện_cầu: '20+ loại cầu BCR',
+            dự_đoán: 'Dự đoán cả 3 cửa Banker, Player, Tie'
+        },
+        cầu_phát_hiện: [
+            'DÂY', 'ĐAN XEN', '2-2', '3-3', '1-2-3', '2-1-2',
+            'HARMONIC', '4-4', 'FIBONACCI', 'MẪU', 'XEN KẼ',
+            'ĐỐI XỨNG', 'LẶP', 'TIE', 'MARKOV', 'XU HƯỚNG',
+            'ÁP ĐẢO', 'ĐỘT BIẾN', 'HỒI PHỤC', 'SONG SONG'
+        ],
+        endpoints: {
+            'Lấy tất cả bàn': '/api/baccarat',
+            'Lấy 1 bàn': '/api/baccarat/:table',
+            'Dự đoán VIP': '/api/predict/:table',
+            'Dự đoán tất cả': '/api/predict/all',
+            'Nhận diện cầu': '/api/patterns/:table',
+            'Kết quả mới nhất': '/api/latest',
+            'Reset phiên': '/api/reset/:table'
+        },
+        example: {
+            url: '/api/predict/5',
+            response: {
+                success: true,
+                table: 'Bàn 5',
+                phiên: 7,
+                dự_đoán: 'Banker',
+                banker: '58%',
+                player: '37%',
+                tie: '5%',
+                tỉ_lệ: '58%',
+                cầu: 'Dây Banker x4',
+                chi_tiết_cầu: 'Dây Banker x4 | Cầu 2-2 (Banker) x2 | Markov: Banker → Banker (65%)',
+                danh_sách_cầu: ['Dây Banker x4', 'Cầu 2-2 (Banker) x2', 'Markov: Banker → Banker (65%)'],
+                số_lượng_cầu: 3,
+                confidence: '72%',
+                id: '@tranhoang2286'
+            }
+        }
+    });
+});
+
+// ======================
+// VÒNG LẶP TỰ ĐỘNG CẬP NHẬT
+// ======================
+async function autoUpdate() {
+    while (true) {
+        await fetchBaccaratData();
+        await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+}
+
+// ======================
+// KHỞI ĐỘNG
+// ======================
+async function start() {
+    console.log('========================================');
+    console.log('🃏 BACCARAT VIP PREDICTION - SIÊU CẦU');
+    console.log('========================================');
+    
+    console.log('[1] Đang đăng nhập...');
+    const loginOk = await login();
+    if (!loginOk) {
+        console.error('[ERROR] Đăng nhập thất bại!');
+        process.exit(1);
+    }
+    console.log('[OK] Đăng nhập thành công');
+    
+    console.log('[2] Vào lobby...');
+    await goToLobby();
+    console.log('[OK] Vào lobby thành công');
+    
+    console.log('[3] Lấy dữ liệu lần đầu...');
+    await fetchBaccaratData();
+    console.log(`[OK] Đã lấy ${baccaratData.length} bàn`);
+    
+    console.log('\n📊 DANH SÁCH BÀN & PHIÊN:');
+    baccaratData.forEach(item => {
+        const session = sessionData[item.table] || 0;
+        console.log(`   Bàn ${item.table.padEnd(4)} | Phiên: ${session} | Độ dài: ${item.result.length}`);
+    });
+    
+    console.log('\n🧵 9 LUỒNG PHÂN TÍCH:');
+    console.log('   1. Tần suất      2. Streak      3. Zigzag');
+    console.log('   4. Pattern 2-2   5. Pattern 3-3 6. Markov');
+    console.log('   7. Momentum      8. Entropy     9. Gap Analysis');
+    
+    console.log('\n🔮 20+ LOẠI CẦU PHÁT HIỆN:');
+    console.log('   DÂY, ĐAN XEN, 2-2, 3-3, 1-2-3, 2-1-2,');
+    console.log('   HARMONIC, 4-4, FIBONACCI, MẪU, XEN KẼ,');
+    console.log('   ĐỐI XỨNG, LẶP, TIE, MARKOV, XU HƯỚNG,');
+    console.log('   ÁP ĐẢO, ĐỘT BIẾN, HỒI PHỤC, SONG SONG');
+    
+    // Chạy auto update background
+    autoUpdate();
+    
+    // Khởi động server
+    const PORT = 5000;
+    app.listen(PORT, '0.0.0.0', () => {
+        console.log(`\n🚀 API SERVER ĐANG CHẠY:`);
+        console.log(`   http://localhost:${PORT}/api/baccarat`);
+        console.log(`   http://localhost:${PORT}/api/predict/5`);
+        console.log(`   http://localhost:${PORT}/api/predict/all`);
+        console.log(`   http://localhost:${PORT}/api/patterns/5`);
+        console.log(`   http://localhost:${PORT}/api/latest`);
+        console.log(`\n⏰ Auto update mỗi 2 giây`);
+        console.log(`📌 Phiên tự động tăng khi có kết quả mới`);
+        console.log('========================================');
+    });
+}
+
+start();
